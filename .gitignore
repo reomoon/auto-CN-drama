@@ -1,0 +1,14 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+
+# 작업물 (원본 영상 대사, 렌더 중간 파일, 완성본)
+work/
+out/
+input/
+*.mp4
+*.mkv
+*.mp3
+*.wav
+!samples/*.mp4
