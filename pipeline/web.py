@@ -180,6 +180,9 @@ def item(name):
     info = _read(d_in / "info.json", {})
     st = _read(odir / "status.json", {})
     vids = _videos(d_in) if d_in.is_dir() else []
+    official_eps = _catalog_eps(info.get("title_zh"))
+    have = {int(m.group(1)) for v in vids if (m := re.match(r"EP0*(\d+)$", v.stem, re.I))}
+    nxt = [e for e in (official_eps or range(1, 200)) if e not in have][:2]
     if st.get("claim"):
         stage = "claimed"
     elif video.exists() and (st.get("tiktok") or st.get("clip")):
@@ -197,6 +200,8 @@ def item(name):
         "drama": (p or {}).get("drama") or info.get("title_ko") or re.sub(r"^[A-Z]\d+_", "", name).replace("_", " "),
         "info": info,
         "inputs": [{"name": v.name, "mb": round(v.stat().st_size / 2**20)} for v in vids],
+        "official_eps": official_eps, "have_eps": sorted(have),
+        "next_eps": (f"{nxt[0]}-{nxt[-1]}" if len(nxt) > 1 and nxt[-1] == nxt[0] + 1 else ",".join(map(str, nxt))),
         "has_input_dir": d_in.is_dir(),
         "stage": stage,
         "busy": bool({name, base} & busy_targets()),
@@ -207,6 +212,23 @@ def item(name):
         "status": st,
         "mtime": max([x.stat().st_mtime for x in (d_in, wdir, video) if x.exists()] or [0]),
     }
+
+
+_cat_cache = {"mtime": 0, "map": {}}
+
+
+def _catalog_eps(title_zh):
+    """공식 채널 카탈로그에서 그 작품의 올라와 있는 회차 번호들."""
+    if not title_zh:
+        return []
+    from .fetch import _norm
+    cats = sorted(config.DATA.glob("official_*.json"))
+    if not cats:
+        return []
+    m = cats[-1].stat().st_mtime
+    if _cat_cache["mtime"] != m:
+        _cat_cache.update(mtime=m, map={_norm(x["title_zh"]): x.get("eps") or [] for x in _read(cats[-1], [])})
+    return _cat_cache["map"].get(_norm(title_zh), [])
 
 
 def all_names():

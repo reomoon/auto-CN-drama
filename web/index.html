@@ -116,6 +116,11 @@ main{max-width:1280px;margin:0 auto;padding:24px}
 .drop{border:1.5px dashed var(--line);border-radius:10px;padding:12px;text-align:center;font-size:13px;color:var(--muted);cursor:pointer}
 .drop.over{border-color:var(--accent);background:var(--accent-soft)}
 .files{font-size:13px;display:flex;flex-wrap:wrap;gap:6px}
+.eps{display:flex;flex-wrap:wrap;gap:5px;max-height:150px;overflow:auto;padding:2px}
+.ep{border:1px solid var(--line);background:var(--panel);border-radius:8px;padding:4px 9px;font-size:13px;cursor:pointer;min-width:48px}
+.ep:hover{border-color:var(--muted)}
+.ep.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.ep.have{background:var(--ok-soft);color:var(--ok);border-color:transparent;cursor:default}
 .files span{background:var(--panel-2);border:1px solid var(--line);border-radius:6px;padding:1px 8px}
 select{border:1px solid var(--line);background:var(--panel);border-radius:10px;padding:6px 8px}
 .copyrow{display:flex;gap:8px;align-items:flex-start;padding:8px 0;border-top:1px solid var(--line)}
@@ -366,15 +371,27 @@ function renderDetail(it) {
   const player = it.video
     ? `<video id="vid" src="${it.video}#t=0.3" controls playsinline preload="metadata"></video>`
     : `<div class="empty">${busy ? "작업 중…" : it.stage === "plan" ? "대본이 준비됐습니다.<br>확인 후 렌더하세요." : "아직 영상이 없습니다."}</div>`;
-  const files = it.inputs.length ? `<div class="files">${it.inputs.map(f => `<span>${esc(f.name)} · ${f.mb}MB</span>`).join("")}</div>` : "";
+  const epName = n => { const m = n.match(/^EP0*(\d+)\./i); return m ? `${m[1]}화` : n; };
+  const files = it.inputs.length ? `<div class="files">${it.inputs.map(f => `<span>${esc(epName(f.name))} · ${f.mb}MB</span>`).join("")}</div>` : "";
+  const offEps = it.official_eps || [], haveEps = new Set(it.have_eps || []);
+  const epPicker = offEps.length ? `<div class="eps" id="eppick">${offEps.map(e => haveEps.has(e)
+      ? `<button class="ep have" disabled title="받음">✓ ${e}화</button>`
+      : `<button class="ep" data-ep="${e}">${e}화</button>`).join("")}</div>
+    <div class="acts"><button class="btn primary" id="btn-fetch" ${busy ? "disabled" : ""}>선택한 회차 받기</button>
+      <span class="muted small" id="ep-count">받을 회차를 눌러 고르세요</span></div>` : "";
   const canUpload = it.has_input_dir || !p;
   const steps = `
     <div class="step ${it.inputs.length || p ? "done" : ""}"><div class="n">1</div><div class="body">
       <b>원본 영상</b>${files}
-      ${it.info?.title_zh && it.has_input_dir ? `<div class="acts">
-        <select id="eps"><option value="1-2">1~2화</option><option value="1">1화</option><option value="1-3">1~3화</option><option value="3-4">3~4화</option></select>
+      ${it.info?.title_zh && it.has_input_dir && offEps.length ? `${epPicker}
+        <span class="muted small">공식 채널에 올라온 회차 ${offEps.length}개 · 인증된 플랫폼 공식 채널 영상만 받습니다 · 회차당 약 0.5GB</span>` : ""}
+      ${it.info?.title_zh && it.has_input_dir && !offEps.length ? `<div class="acts">
+        <input id="eps" class="field" style="width:110px" value="${esc(it.next_eps || "1-2")}" placeholder="예: 3-4" title="받을 회차: 3-4, 5, 3,5,7">
+        <span class="small">화</span>
         <button class="btn ${it.inputs.length ? "" : "primary"}" id="btn-fetch" ${busy ? "disabled" : ""}>공식 채널에서 찾기</button></div>
-        <span class="muted small">인증된 플랫폼 공식 채널(텐센트·아이치이·유쿠·망고TV 등) 영상만 받습니다.</span>` : ""}
+        <span class="muted small">${(it.official_eps || []).length
+          ? `공식 채널에 EP${it.official_eps[0]}~${it.official_eps[it.official_eps.length - 1]} (${it.official_eps.length}개) 확인됨 · `
+          : ""}받을 회차를 3-4, 5, 3,5,7처럼 입력하세요. 인증된 플랫폼 공식 채널 영상만 받습니다. 회차당 약 0.5GB입니다.</span>` : ""}
       ${(it.info?.official || []).length ? `<span class="small">${it.info.official.map(o => `<a href="${esc(o.url)}" target="_blank" rel="noopener">${o.ep}화 · ${esc(o.channel)}</a>`).join(" · ")}</span>` : ""}
       ${canUpload ? `<div class="drop" id="drop">또는 회차 영상을 끌어다 놓거나 눌러서 선택 (1~3개 권장)<input type="file" id="file" accept="video/*" multiple hidden></div>` : `<span class="muted small">직접 실행한 작업이라 원본 폴더가 없습니다.</span>`}
     </div></div>
@@ -440,7 +457,22 @@ function renderDetail(it) {
     drop.ondragleave = () => drop.classList.remove("over");
     drop.ondrop = e => { e.preventDefault(); drop.classList.remove("over"); uploadFiles(it.name, e.dataTransfer.files); };
   }
-  if ($("#btn-fetch")) $("#btn-fetch").onclick = () => job({cmd: "fetch", name: it.base || it.name, eps: $("#eps").value});
+  const picked = new Set();
+  document.querySelectorAll("[data-ep]").forEach(b => b.onclick = () => {
+    const e = +b.dataset.ep;
+    picked.has(e) ? picked.delete(e) : picked.add(e);
+    b.classList.toggle("on", picked.has(e));
+    $("#ep-count").textContent = picked.size ? `${[...picked].sort((x, y) => x - y).join(", ")}화 선택 (${picked.size}개, 약 ${(picked.size * 0.5).toFixed(1)}GB)` : "받을 회차를 눌러 고르세요";
+  });
+  if ($("#btn-fetch")) $("#btn-fetch").onclick = () => {
+    if ($("#eppick")) {
+      if (!picked.size) return toast("받을 회차를 먼저 고르세요");
+      return job({cmd: "fetch", name: it.base || it.name, eps: [...picked].sort((x, y) => x - y).join(",")});
+    }
+    const eps = $("#eps").value.replace(/\s/g, "").replace(/~/g, "-");
+    if (!/^\d+(-\d+)?(,\d+(-\d+)?)*$/.test(eps)) return toast("회차를 3-4, 5, 3,5,7 처럼 입력하세요");
+    job({cmd: "fetch", name: it.base || it.name, eps});
+  };
   if ($("#btn-next")) $("#btn-next").onclick = () => job({cmd: "series", name: it.base, llm: $("#llm").value});
   $("#btn-plan").onclick = () => {
     if (p && !confirm("지금 대본을 버리고 새로 만들까요? (이전 대본은 plan_prev.json으로 보관)")) return;
