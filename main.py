@@ -14,6 +14,7 @@
 
   python main.py plan "드라마명" 영상1.mp4 [...] [--llm auto|claude|gpt] [--name 폴더명]
   python main.py render work\\폴더명 [--tts elevenlabs|edge]
+  python main.py upload work\\폴더명 --to tiktok|clip [--private] [--dry-run]   # auto-insta 계정으로 올리기
   python main.py make "드라마명" 영상1.mp4 ...      # plan + render 한 번에
 """
 import argparse
@@ -79,6 +80,12 @@ def main():
         p.add_argument("--name", help="작업 폴더 이름 (같은 드라마로 여러 편 만들 때)")
         p.add_argument("--tts", choices=TTS)
 
+    u = sub.add_parser("upload", help="완성 영상을 틱톡·네이버 클립에 올리기 (auto-insta 계정)")
+    u.add_argument("workdir")
+    u.add_argument("--to", required=True, choices=["tiktok", "clip"])
+    u.add_argument("--private", action="store_true", help="틱톡 '나만 보기'로 올리기")
+    u.add_argument("--dry-run", action="store_true", help="틱톡: 게시 버튼 직전까지만")
+
     d = sub.add_parser("render", help="plan.json → 영상")
     d.add_argument("workdir")
     d.add_argument("--tts", choices=TTS)
@@ -113,6 +120,9 @@ def main():
         batch.batch(do_render=a.render, engine=a.llm, tts_engine=a.tts, only=a.only)
     elif a.cmd == "plan":
         plan.run(a.drama, a.videos, engine=a.llm, name=a.name, tts_engine=a.tts)
+    elif a.cmd == "upload":
+        from pipeline import upload
+        upload.run(a.workdir, a.to, private=a.private, dry_run=a.dry_run)
     elif a.cmd == "render":
         render.run(a.workdir, tts_engine=a.tts)
     elif a.cmd == "make":

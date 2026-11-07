@@ -382,6 +382,14 @@ function renderDetail(it) {
     <div class="card box"><h4>업로드 문구</h4>
       <div class="copyrow"><span class="label">제목</span><span class="val">${esc(p.title)}</span><button class="btn ghost" data-copy="title">복사</button></div>
       <div class="copyrow"><span class="label">캡션</span><span class="val">${esc(p.caption)}\n${esc(tags)}</span><button class="btn ghost" data-copy="caption">복사</button></div>
+      ${it.video ? `<div class="acts" style="margin-top:10px">
+        <button class="btn primary" data-up="tiktok" ${it.uploading || it.status.claim ? "disabled" : ""}>틱톡에 올리기</button>
+        <button class="btn primary" data-up="clip" ${it.uploading || it.status.claim ? "disabled" : ""}>클립에 올리기</button>
+        <label class="small" style="display:flex;gap:4px;align-items:center"><input type="checkbox" id="tt-private"> 틱톡 나만 보기</label>
+        <button class="btn ghost small" data-up="tiktok-dry" ${it.uploading ? "disabled" : ""}>틱톡 시험(게시 직전까지)</button>
+      </div>
+      <span class="muted small">${it.uploading ? "업로드 중입니다. PC에 열린 업로드 창을 확인하세요." :
+        "auto-insta와 같은 계정(틱톡, 네이버 클립 다큐 계정)으로 올립니다. PC에 업로드 창이 열리고, 틱톡 퍼즐이 뜨면 그 창에서 직접 풀어야 합니다."}</span>` : ""}
       ${it.video ? `<div class="checks">
         <label><input type="checkbox" data-st="tiktok" ${it.status.tiktok ? "checked" : ""}> 틱톡 업로드 ${it.status.tiktok ? `<small>${esc(it.status.tiktok)}</small>` : ""}</label>
         <label><input type="checkbox" data-st="clip" ${it.status.clip ? "checked" : ""}> 네이버 클립 업로드 ${it.status.clip ? `<small>${esc(it.status.clip)}</small>` : ""}</label>
@@ -422,6 +430,13 @@ function renderDetail(it) {
   $("#btn-final").onclick = () => renderJob(it.name, "elevenlabs");
   document.querySelectorAll("[data-copy]").forEach(b => b.onclick = () =>
     copy(b.dataset.copy === "title" ? p.title : `${p.caption}\n\n${tags}`));
+  document.querySelectorAll("[data-up]").forEach(b => b.onclick = () => {
+    const kind = b.dataset.up, dry = kind === "tiktok-dry", to = dry ? "tiktok" : kind;
+    const priv = to === "tiktok" && $("#tt-private")?.checked;
+    const where = to === "tiktok" ? `틱톡${priv ? " (나만 보기)" : ""}` : "네이버 클립(다큐 계정)";
+    if (!dry && !confirm(`${where}에 올릴까요?\n\n${p.title}`)) return;
+    job({cmd: "upload", name: it.name, to, private: priv, dry_run: dry});
+  });
   document.querySelectorAll("[data-st]").forEach(c => c.onchange = async () => {
     await api(`/api/status/${encodeURIComponent(it.name)}`, {method: "POST", body: {[c.dataset.st]: c.checked}});
     loadItems(); loadRank(); select(it.name, true);

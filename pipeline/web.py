@@ -161,7 +161,12 @@ class Jobs:
         return out
 
 
-JOBS = Jobs()
+JOBS = Jobs()      # 무거운 작업(GPU·렌더): 한 번에 하나
+UPLOADS = Jobs()   # 업로드: 렌더와 따로, 한 번에 하나
+
+
+def busy_targets():
+    return JOBS.busy_targets() | UPLOADS.busy_targets()
 
 
 # ---------------- 데이터 ----------------
@@ -194,7 +199,8 @@ def item(name):
         "inputs": [{"name": v.name, "mb": round(v.stat().st_size / 2**20)} for v in vids],
         "has_input_dir": d_in.is_dir(),
         "stage": stage,
-        "busy": bool({name, base} & JOBS.busy_targets()),
+        "busy": bool({name, base} & busy_targets()),
+        "uploading": f"upload:{name}" in UPLOADS.busy_targets(),
         "plan": {k: p.get(k) for k in ("title", "engine", "_est_total")} if p else None,
         "video": f"/media/{name}?v={int(video.stat().st_mtime)}" if video.exists() else None,
         "post": (odir / "post.txt").read_text(encoding="utf-8") if (odir / "post.txt").exists() else None,
@@ -400,6 +406,21 @@ def api_job():
         job = JOBS.add(f"{kind} 순위 새로고침", ["rank", "--n", "20"] + (["--short"] if short else []))
     elif cmd == "inbox":
         job = JOBS.add(f"{kind} 폴더 만들기", ["inbox"] + (["--short"] if short else []))
+    elif cmd == "upload":
+        name = _name(name)
+        to = b.get("to")
+        if to not in ("tiktok", "clip"):
+            abort(400, "올릴 곳(tiktok/clip)을 고르세요")
+        args = ["upload", str(config.WORK / name), "--to", to]
+        label = {"tiktok": "틱톡", "clip": "네이버 클립"}[to]
+        if to == "tiktok" and b.get("private"):
+            args.append("--private")
+            label += " (나만 보기)"
+        if to == "tiktok" and b.get("dry_run"):
+            args.append("--dry-run")
+            label += " (시험)"
+        job = UPLOADS.add(f"{label}에 올리기 · {name}", args, target=f"upload:{name}")
+        return jsonify(job)
     elif cmd == "catalog":
         job = JOBS.add("공식 영상 목록 새로고침", ["catalog"])
     elif cmd == "pick":
@@ -440,7 +461,8 @@ def api_job():
 
 @app.get("/api/jobs")
 def api_jobs():
-    return jsonify(JOBS.snapshot())
+    jobs = sorted(JOBS.snapshot() + UPLOADS.snapshot(), key=lambda j: -j["created"])
+    return jsonify(jobs[:40])
 
 
 @app.get("/media/<name>")

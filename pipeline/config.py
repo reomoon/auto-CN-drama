@@ -58,6 +58,12 @@ FONT = env("FONT", "Malgun Gothic")
 SUB_MARGIN_V = int(env("SUB_MARGIN_V", "470"))        # 자막 아래 여백(px). 틱톡 하단 UI 피하기
 NARR_ORIG_VOLUME = float(env("NARR_ORIG_VOLUME", "0.15"))  # 나레이션 중 원본 볼륨
 
+# --- 업로드 (auto-insta 의 업로드 코드·로그인 계정을 그대로 사용) ---
+AUTO_INSTA_DIR = env("AUTO_INSTA_DIR", r"C:\python\auto-insta")
+CLIP_ACCOUNT = env("CLIP_ACCOUNT", "docu")             # 네이버 클립 계정: docu(다큐 클립 계정) | main
+CLIP_CATEGORY = env("CLIP_CATEGORY", "이슈")           # 클립 카테고리 (클립 업로드 화면의 이름 그대로)
+UPLOAD_AI_LABEL = env("UPLOAD_AI_LABEL", "1") not in ("0", "false", "no")   # AI 음성 나레이션 → AI 표시 켜기
+
 # --- 대시보드 원격 접속 ---
 DASHBOARD_PASSWORD = env("DASHBOARD_PASSWORD")   # 비우면 원격(터널·Wi-Fi) 접속 차단, 이 PC(127.0.0.1)는 항상 허용
 REMOTE_SSH_HOST = env("REMOTE_SSH_HOST")          # AWS 서버 주소 (예: 3.36.175.120)
