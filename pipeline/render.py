@@ -77,10 +77,11 @@ def layout(width, height):
         z = 1.0 if vertical else min(config.BOLD_MAX_ZOOM, max(config.BOLD_ZOOM, need))
         fg_h = min(1920 - BOLD_TOP, 1080 * z * height / width)
         bottom = BOLD_TOP + fg_h
-        cap = min(bottom - 80, 1520)              # 해설·대사 자막 바닥 위치 (영상 아래쪽 위에 겹침)
+        dlg = min(bottom - 28, 1540)              # 대사 자막: 영상 맨 아래 한 줄 고정
+        narr = dlg - 150                          # 해설 자막: 대사 자리보다 위
         return {"template": "bold", "zoom": z, "pad_y": BOLD_TOP, "max_h": 1920 - BOLD_TOP,
-                "title_y": (250, 405), "label_y": None,
-                "dialog_v": int(1920 - cap), "narr_align": 2, "narr_v": int(1920 - cap)}
+                "title_y": (218, 362), "label_y": BOLD_TOP - 14,   # 제목 2줄, 〈작품명〉 ep 라벨
+                "dialog_v": int(1920 - dlg), "narr_align": 2, "narr_v": int(1920 - narr)}
 
     z = 1.0 if vertical else config.FG_ZOOM
     fg_h = min(1920, 1080 * z * height / width)
@@ -96,7 +97,11 @@ def layout(width, height):
             "narr_align": 8, "narr_v": int(bottom + 45)}   # 나레이션: 영상 바로 아래 검은 여백부터
 
 
-def episode_label(plan):
+def episode_label(plan, bold=False):
+    if bold:
+        base = episode_label(plan)
+        name, _, ep = base.partition("  | ")
+        return f"〈{name}〉" + (f" {ep}" if ep else "")
     eps = sorted({c["ep"] for c in plan.get("credits") or []})
     if not eps:
         for s in plan.get("sources", []):
@@ -123,13 +128,13 @@ def build_ass(events, overlay, total, path, lay=None, label=None):
         t1, t2 = ass_color(config.BOLD_TITLE1), ass_color(config.BOLD_TITLE2)
         narr_c = ass_color(config.BOLD_NARR)
         styles = (
-            f"Style: Title1,{f},150,{t1},{t1},&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,5,0,2,20,20,0,1\n"
-            f"Style: Title2,{f},150,{t2},{t2},&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,5,0,2,20,20,0,1\n"
-            f"Style: Label,{f},46,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,3,0,1,60,60,0,1\n"
+            f"Style: Title1,{f},136,{t1},{t1},&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,5,0,2,20,20,0,1\n"
+            f"Style: Title2,{f},136,{t2},{t2},&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,5,0,2,20,20,0,1\n"
+            f"Style: Label,{f},50,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,3,0,1,44,44,0,1\n"
             f"Style: Narr,{f},92,{narr_c},{narr_c},&H00000000,&H64000000,0,0,0,0,100,100,0,0,1,9,3,2,130,130,{narr_v},1\n"
-            f"Style: Dialog,{f},74,&H00FFFFFF,&H00FFFFFF,&H00000000,&H64000000,0,0,0,0,100,100,0,0,1,7,3,2,130,130,{dlg_v},1\n")
-        wrap_w = {"Narr": 9, "Dialog": 12}
-        base = 150
+            f"Style: Dialog,{f},62,&H00FFFFFF,&H00FFFFFF,&H00000000,&H78000000,0,0,0,0,100,100,0,0,1,5,2,2,60,60,{dlg_v},1\n")
+        wrap_w = {"Narr": 9, "Dialog": 18}
+        base = 136
     else:
         f = config.FONT
         narr_c, t2_c = ass_color(config.NARR_COLOR), ass_color(config.TITLE2_COLOR)
@@ -325,7 +330,7 @@ def run(wdir, tts_engine=None):
     final_len = T / speed
     events = [(s / speed, e / speed, st, tx) for s, e, st, tx in events]
     build_ass(events, plan.get("overlay_title"), final_len, rdir / "subs.ass",
-              lay=lay, label=episode_label(plan) if lay["template"] == "classic" else None)
+              lay=lay, label=episode_label(plan, bold=lay["template"] == "bold"))
     (rdir / "list.txt").write_text("".join(f"file '{s}'\n" for s in segs), encoding="utf-8")
 
     print("  · 자막 합성 + 음량 정규화")

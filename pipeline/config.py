@@ -33,7 +33,7 @@ WHISPER_MODEL = env("WHISPER_MODEL", "large-v3")
 TTS_ENGINE = env("TTS_ENGINE", "elevenlabs")   # elevenlabs | edge(무료 미리보기용)
 ELEVEN_KEY = env("ELEVENLABS_API_KEY")
 ELEVEN_VOICE = env("ELEVENLABS_VOICE_ID")
-ELEVEN_MODEL = env("ELEVENLABS_MODEL", "eleven_multilingual_v2")
+ELEVEN_MODEL = env("ELEVENLABS_MODEL", "eleven_v4")
 ELEVEN_SPEED = env("ELEVENLABS_SPEED")         # 0.7~1.2, 비우면 기본
 EDGE_VOICE = env("EDGE_VOICE", "ko-KR-InJoonNeural")
 
