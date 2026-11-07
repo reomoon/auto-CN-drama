@@ -33,7 +33,7 @@ WHISPER_MODEL = env("WHISPER_MODEL", "large-v3")
 TTS_ENGINE = env("TTS_ENGINE", "elevenlabs")   # elevenlabs | typecast | gemini | google | edge(무료) | auto
 ELEVEN_KEY = env("ELEVENLABS_API_KEY")
 ELEVEN_VOICE = env("ELEVENLABS_VOICE_ID")
-ELEVEN_MODEL = env("ELEVENLABS_MODEL", "eleven_v4")
+ELEVEN_MODEL = env("ELEVENLABS_MODEL", "eleven_v4_turbo")
 ELEVEN_SPEED = env("ELEVENLABS_SPEED")         # 0.7~1.2, 비우면 기본
 EDGE_VOICE = env("EDGE_VOICE", "ko-KR-InJoonNeural")
 # 아래 목소리 목록·설정은 auto-insta(youtube/build_youtube_video.py, youtube/gemini_tts.py)와 같다.
