@@ -118,9 +118,11 @@ PROMPT = """너는 중국 막장 드라마 숏폼(틱톡·네이버 클립) 해�
 10. 원본 항목 하나는 2~10초. 대사가 완결되는 지점에서 끊는다(문장 중간에서 자르지 않기).
 11. from/to는 위 목록에 있는 대사ID만, 같은 소스(s번호) 안에서, from이 to보다 앞이어야 한다.
 
-JSON만 출력하라:
+{series}JSON만 출력하라:
 {{
  "story": "이 영상이 따라가는 핵심 갈등 한 문장",
+ "recap": "이번 편까지의 전체 줄거리 2문장 (다음 편 작성용)",
+ "cliff": "마지막에 남긴 다음 편 떡밥 한 문장",
  "title": "업로드 제목 (30자 이내, 궁금증 유발)",
  "overlay_title": ["영상 상단 고정 문구 1줄 (12자 이내)", "2줄 (12자 이내, 선택)"],
  "timeline": [
@@ -340,6 +342,26 @@ def write_review(plan, by_id, path):
     Path(path).write_text("\n".join(L), encoding="utf-8")
 
 
+def series_text(series):
+    if not series:
+        return ""
+    n = series["part"]
+    s = [f"### 시리즈 {n}편 (중요)",
+         f"이 영상은 '{n}편'이다. 시청자가 다음 편을 기다리게 만드는 연재물로 쓴다."]
+    if series.get("prev"):
+        s.append("지난 편까지의 내용:")
+        s += [f"- {p['part']}편: {p.get('recap') or p.get('story')}"
+              + (f" (예고: {p['cliff']})" if p.get("cliff") else "") for p in series["prev"]]
+        s += ["- 첫 나레이션(훅)은 \"지난 이야기\"를 한 문장으로 짚고, 바로 이번 편의 충격적인 사실로 넘어간다.",
+              "  예) \"지난 편, 아내는 남편의 거짓말을 처음 알아챘습니다. 그런데 이번엔 더 큰 비밀이 드러납니다.\"",
+              "- 지난 편에서 이미 설명한 사실과 장면은 반복하지 않는다. 지난 편 예고가 있으면 이번 편에서 그 떡밥을 풀어준다."]
+    else:
+        s.append("- 1편이므로 인물 관계와 기본 설정을 처음 보는 사람도 알 수 있게 소개한다.")
+    s += ["- 마지막 나레이션: 내 의견 + 질문 다음에, 다음 편이 궁금해지는 떡밥을 던지고 \"다음 편에서 계속됩니다\"로 끝낸다.",
+          f"- title은 \"[{{드라마명}} {n}편]\"으로 시작한다.", ""]
+    return "\n".join(s) + "\n"
+
+
 def info_text(info):
     if not info:
         return ""
@@ -348,7 +370,7 @@ def info_text(info):
     return "".join(f"{k}: {v}\n" for k, v in rows if v)
 
 
-def run(drama, videos, engine="auto", name=None, tts_engine=None, info=None):
+def run(drama, videos, engine="auto", name=None, tts_engine=None, info=None, series=None):
     videos = [str(Path(v).resolve()) for v in videos]
     for v in videos:
         if not Path(v).exists():
@@ -380,12 +402,19 @@ def run(drama, videos, engine="auto", name=None, tts_engine=None, info=None):
                      for x in shown)
     style = (config.PROMPTS / "style.txt").read_text(encoding="utf-8")
     prompt = PROMPT.format(drama=drama, info=info_text(info), style=style, lines=text, cps=NARR_CPS,
+                           series=series_text(series),
                            min_s=config.TARGET_MIN_SEC, max_s=config.TARGET_MAX_SEC,
                            orig_lo=round((1 - config.NARR_RATIO_MAX) * 100),
                            orig_hi=round((1 - config.NARR_RATIO_MIN) * 100), min_analysis=config.MIN_ANALYSIS)
     plan, used = llm.generate_json(prompt, engine=eng, validate=make_validator(by_id))
     print(f"  · 줄거리: {plan.get('story', '')}")
     translate(plan, by_id, used, drama, info)
+    if series:
+        plan["series"] = {k: series[k] for k in ("base", "part", "eps")}
+        tag = f"[{drama} {series['part']}편]"
+        if not plan.get("title", "").startswith("["):
+            plan["title"] = f"{tag} {plan.get('title', '')}".strip()
+        plan["hashtags"] = list(dict.fromkeys((plan.get("hashtags") or []) + [f"#{drama.replace(' ', '')}{series['part']}편"]))
     plan.update({"drama": drama, "engine": used, "sources": videos, "_source_total": round(src_total, 1),
                  "_source_ratio": round(plan["_est_total"] / src_total, 4),
                  "credits": [{"ep": o["ep"], "channel": o["channel"], "url": o["url"]}

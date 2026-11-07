@@ -1,7 +1,10 @@
 """로컬 대시보드: 순위 보기, 영상 미리보기, 대본 수정, 대본 생성/렌더 실행."""
+import datetime as dt
+import hmac
 import json
 import os
 import re
+import secrets
 import subprocess
 import sys
 import threading
@@ -9,7 +12,7 @@ import time
 import uuid
 from pathlib import Path
 
-from flask import Flask, abort, jsonify, request, send_file
+from flask import Flask, abort, jsonify, redirect, request, send_file, session
 
 from . import config, tts
 from . import plan as planmod
@@ -18,6 +21,80 @@ from .batch import INPUT, VIDEO_EXT, _videos
 app = Flask(__name__, static_folder=None)
 WEB = config.ROOT / "web"
 LOGS = config.WORK / "_jobs"
+
+
+# ---------------- 로그인 (원격 접속 보호) ----------------
+def _secret_key():
+    p = config.WORK / ".web_secret"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    if not p.exists():
+        p.write_text(secrets.token_hex(32), encoding="utf-8")
+    return p.read_text(encoding="utf-8").strip()
+
+
+app.secret_key = _secret_key()
+app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Lax",
+                  PERMANENT_SESSION_LIFETIME=dt.timedelta(days=30))
+_fails = {}   # ip → [실패 시각들]
+
+
+def _is_local():
+    """이 PC에서 직접 연 경우만 로그인 생략. 터널(Cloudflare)·같은 Wi-Fi 접속은 로그인 필요."""
+    host = (request.host or "").split(":")[0].lower()
+    proxied = any(request.headers.get(h) for h in ("Cf-Connecting-Ip", "X-Real-Ip", "X-Forwarded-For"))
+    return host in ("127.0.0.1", "localhost") and not proxied and request.remote_addr in ("127.0.0.1", "::1")
+
+
+def _client_ip():
+    return (request.headers.get("Cf-Connecting-Ip") or request.headers.get("X-Real-Ip")
+            or request.remote_addr or "?")
+
+
+@app.before_request
+def _guard():
+    if request.path == "/login" or _is_local() or session.get("ok"):
+        return None
+    if not config.DASHBOARD_PASSWORD:
+        abort(403, "원격 접속이 잠겨 있습니다. .env 에 DASHBOARD_PASSWORD 를 설정하세요.")
+    if request.path.startswith(("/api/", "/media/")):
+        abort(401)
+    return redirect("/login")
+
+
+LOGIN_HTML = """<!doctype html><html lang="ko"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>중드 숏폼 스튜디오 · 로그인</title>
+<style>:root{--bg:#f6f5f2;--panel:#fff;--line:#e6e3dd;--text:#1d1c1a;--muted:#77726a;--accent:#d6402f}
+@media (prefers-color-scheme:dark){:root{--bg:#141312;--panel:#1d1c1a;--line:#33312d;--text:#eeebe6;--muted:#9b958b;--accent:#f0624f}}
+*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;background:var(--bg);color:var(--text);
+font:15px/1.5 "Malgun Gothic","Apple SD Gothic Neo",system-ui,sans-serif;padding:16px}
+form{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:28px;width:min(360px,100%);display:flex;flex-direction:column;gap:12px}
+h1{margin:0 0 4px;font-size:20px}input{font:inherit;color:inherit;border:1px solid var(--line);background:transparent;border-radius:10px;padding:10px 12px}
+button{font:inherit;font-weight:700;border:0;border-radius:10px;padding:10px;background:var(--accent);color:#fff;cursor:pointer}
+.err{color:var(--accent);font-size:13px;min-height:1em}.muted{color:var(--muted);font-size:13px}</style></head>
+<body><form method="post"><h1>중드 숏폼 스튜디오</h1><span class="muted">원격 접속에는 비밀번호가 필요합니다.</span>
+<input type="password" name="password" placeholder="비밀번호" autofocus autocomplete="current-password">
+<div class="err">{err}</div><button>들어가기</button></form></body></html>"""
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    err = ""
+    if request.method == "POST":
+        ip, now = _client_ip(), time.time()
+        recent = [t for t in _fails.get(ip, []) if now - t < 600]
+        if len(recent) >= 8:
+            err = "실패가 많아 10분 동안 잠겼습니다."
+        elif config.DASHBOARD_PASSWORD and hmac.compare_digest(
+                request.form.get("password", "").encode(), config.DASHBOARD_PASSWORD.encode()):
+            session.permanent = True
+            session["ok"] = True
+            _fails.pop(ip, None)
+            return redirect("/")
+        else:
+            time.sleep(1)
+            _fails[ip] = recent + [now]
+            err = "비밀번호가 맞지 않습니다."
+    return LOGIN_HTML.replace("{err}", err)
 
 
 def _read(p, default=None):
@@ -89,10 +166,13 @@ JOBS = Jobs()
 
 # ---------------- 데이터 ----------------
 def item(name):
-    d_in, wdir, odir = INPUT / name, config.WORK / name, config.OUT / name
+    wdir, odir = config.WORK / name, config.OUT / name
+    p = _read(wdir / "plan.json")
+    ser = (p or {}).get("series") or {}
+    base = ser.get("base") or name
+    d_in = INPUT / base
     video = odir / f"{name}.mp4"
     info = _read(d_in / "info.json", {})
-    p = _read(wdir / "plan.json")
     st = _read(odir / "status.json", {})
     vids = _videos(d_in) if d_in.is_dir() else []
     if st.get("claim"):
@@ -108,13 +188,13 @@ def item(name):
     else:
         stage = "empty"
     return {
-        "name": name,
+        "name": name, "base": base, "part": ser.get("part") or (1 if p else None),
         "drama": (p or {}).get("drama") or info.get("title_ko") or re.sub(r"^[A-Z]\d+_", "", name).replace("_", " "),
         "info": info,
         "inputs": [{"name": v.name, "mb": round(v.stat().st_size / 2**20)} for v in vids],
         "has_input_dir": d_in.is_dir(),
         "stage": stage,
-        "busy": name in JOBS.busy_targets(),
+        "busy": bool({name, base} & JOBS.busy_targets()),
         "plan": {k: p.get(k) for k in ("title", "engine", "_est_total")} if p else None,
         "video": f"/media/{name}?v={int(video.stat().st_mtime)}" if video.exists() else None,
         "post": (odir / "post.txt").read_text(encoding="utf-8") if (odir / "post.txt").exists() else None,
@@ -139,7 +219,9 @@ def plan_view(name):
         abort(404)
     by_id = {x["id"]: x for x in lines}
     planmod.NARR_CPS = tts.chars_per_sec()
-    marks = (_read(config.OUT / name / "timeline.json") or {}).get("items") or []
+    raw = (_read(config.OUT / name / "timeline.json") or {}).get("items") or []
+    at_by_idx = {(m[2] if len(m) > 2 else k): m[0] for k, m in enumerate(raw)}
+    marks = raw
     rows, t = [], 0.0
     for i, it in enumerate(p["timeline"]):
         a, b = by_id[it["from"]], by_id[it["to"]]
@@ -149,7 +231,7 @@ def plan_view(name):
             "narration": it.get("narration") or "", "role": it.get("role") or "",
             "src": a["src"], "from": it["from"], "to": it["to"],
             "src_start": a["start"], "src_end": b["end"], "est": round(sec, 1),
-            "at": marks[i][0] if i < len(marks) else round(t, 1),
+            "at": at_by_idx.get(i, round(t, 1)), "dropped": bool(marks) and i not in at_by_idx,
             "lines": [{"id": f"L{n}", "zh": by_id[f"L{n}"]["text"], "ko": (it.get("subs") or {}).get(f"L{n}", ""),
                        "energy": by_id[f"L{n}"].get("energy", 0)} for n in rng if f"L{n}" in by_id],
         })
@@ -330,6 +412,10 @@ def api_job():
         name = _name(name)
         eps = b.get("eps") if re.fullmatch(r"[\d,\-]{1,20}", str(b.get("eps", ""))) else "1-2"
         job = JOBS.add(f"공식 영상 찾기 · {name}", ["fetch", "--only", name, "--eps", eps], target=name)
+    elif cmd == "series":
+        base = _name(name)
+        llm = b.get("llm") if b.get("llm") in ("claude", "gpt") else "auto"
+        job = JOBS.add(f"다음 편 만들기 · {base}", ["series", base, "--llm", llm], target=base)
     elif cmd in ("plan", "replan"):
         name = _name(name)
         llm = b.get("llm") if b.get("llm") in ("claude", "gpt") else "auto"
@@ -338,7 +424,10 @@ def api_job():
             def before(w=config.WORK / name):
                 if (w / "plan.json").exists():
                     (w / "plan.json").replace(w / "plan_prev.json")
-        job = JOBS.add(f"대본 만들기 · {name}", ["batch", "--only", name, "--llm", llm], target=name, before=before)
+        ser = (_read(config.WORK / name / "plan.json") or {}).get("series")
+        args = (["series", ser["base"], "--part", str(ser["part"]), "--llm", llm] if ser
+                else ["batch", "--only", name, "--llm", llm])
+        job = JOBS.add(f"대본 만들기 · {name}", args, target=name, before=before)
     elif cmd == "render":
         name = _name(name)
         t = b.get("tts") if b.get("tts") in ("elevenlabs", "edge") else "edge"
@@ -363,9 +452,14 @@ def media(name):
     return send_file(p, mimetype="video/mp4", conditional=True)
 
 
-def run(port=8700, lan=False):
+def run(port=8700, lan=False, remote=False):
     host = "0.0.0.0" if lan else "127.0.0.1"
     print(f"대시보드: http://127.0.0.1:{port}")
+    if remote:
+        if not config.DASHBOARD_PASSWORD:
+            raise RuntimeError("원격 접속에는 .env 의 DASHBOARD_PASSWORD 가 필요합니다.")
+        from . import remote as remote_mod
+        remote_mod.start(port)
     if lan:
         import socket
         try:

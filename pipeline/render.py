@@ -99,6 +99,9 @@ def layout(width, height):
 
 def episode_label(plan, bold=False):
     if bold:
+        part = (plan.get("series") or {}).get("part")
+        if part:
+            return f"〈{plan['drama']}〉 {part}편"
         base = episode_label(plan)
         name, _, ep = base.partition("  | ")
         return f"〈{name}〉" + (f" {ep}" if ep else "")
@@ -272,9 +275,9 @@ def run(wdir, tts_engine=None):
         shutil.copytree(FONTS, rdir / "fonts", dirs_exist_ok=True)
     print(f"  · 템플릿: {lay['template']}")
 
-    events, segs, marks, T = [], [], [], 0.0
+    # 1단계: 나레이션 음성을 먼저 만들어 항목별 실제 길이를 잰다
     tl = plan["timeline"]
-    is_narr = [bool((it.get("narration") or "").strip()) for it in tl]
+    items = []
     for i, it in enumerate(tl, 1):
         a, b = by_id[it["from"]], by_id[it["to"]]
         src = sources[a["src"]]
@@ -292,13 +295,32 @@ def run(wdir, tts_engine=None):
         if start + seg > sdur:
             start = max(0.0, sdur - seg)
             seg = min(seg, sdur)
+        items.append({"it": it, "idx": i - 1, "src": src, "start": start, "seg": seg, "narr": narr,
+                      "mp3": mp3, "nd": nd})
 
+    # 2단계: 너무 길면(8% 배속으로도 90초 초과) 덜 격한 원본 장면부터 뺀다
+    limit = (config.MAX_SEC - 0.5) * 1.08
+    while sum(x["seg"] for x in items) > limit:
+        cands = [x for x in items[1:-1] if not x["narr"]]
+        if not cands:
+            break
+        worst = min(cands, key=lambda x: sum(by_id[f"L{n}"].get("energy", 0) for n in
+                                              range(int(x["it"]["from"][1:]), int(x["it"]["to"][1:]) + 1)
+                                              if f"L{n}" in by_id))
+        items.remove(worst)
+        print(f"  · 길이 초과 → 원본 장면 {worst['it']['from']}~{worst['it']['to']} 제외")
+
+    events, segs, marks, T = [], [], [], 0.0
+    tl = [x["it"] for x in items]
+    is_narr = [bool(x["narr"]) for x in items]
+    for i, x in enumerate(items, 1):
+        it, src, start, seg, narr, mp3, nd = (x["it"], x["src"], x["start"], x["seg"], x["narr"], x["mp3"], x["nd"])
         print(f"  · [{i}/{len(tl)}] 구간 편집 {seg:.1f}초")
         out = rdir / f"seg_{i:02d}.mp4"
         render_segment(src, info[src]["has_audio"], start, seg, str(mp3) if mp3 else None, str(out), lay,
                        ramp_in=i > 1 and not is_narr[i - 2], ramp_out=i < len(tl) and not is_narr[i])
         segs.append(out.name)
-        marks.append([round(T, 2), round(seg, 2)])
+        marks.append([round(T, 2), round(seg, 2), x["idx"]])
 
         if narr:
             chunks = chunk_narration(narr, maxlen=18 if lay["template"] == "bold" else 24)
@@ -354,7 +376,7 @@ def run(wdir, tts_engine=None):
     (odir / "post.txt").write_text(post, encoding="utf-8")
     (odir / "timeline.json").write_text(json.dumps(
         {"duration": round(final_len, 2), "speed": round(speed, 4),
-         "items": [[round(s / speed, 2), round(d / speed, 2)] for s, d in marks]}), encoding="utf-8")
+         "items": [[round(s / speed, 2), round(d / speed, 2), k] for s, d, k in marks]}), encoding="utf-8")
 
     if final_len < 60.5:
         print(f"  ! {final_len:.1f}초 — 틱톡 크리에이터 리워드는 1분 초과 영상만 해당됩니다.")

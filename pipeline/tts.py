@@ -37,20 +37,27 @@ def _chars(text):
     return len("".join(text.split()))
 
 
+def _stat_key(engine):
+    """목소리·모델마다 말하기 속도가 달라서 따로 기록한다."""
+    engine = engine or config.TTS_ENGINE
+    if engine == "elevenlabs":
+        return f"elevenlabs:{config.ELEVEN_VOICE}:{config.ELEVEN_MODEL}:{config.ELEVEN_SPEED}"
+    return f"edge:{config.EDGE_VOICE}"
+
+
 def record(text, sec, engine=None):
     """실제 TTS 길이를 기록해서 다음 대본의 길이 추정에 쓴다."""
-    engine = engine or config.TTS_ENGINE
+    key = _stat_key(engine)
     data = json.loads(STATS.read_text(encoding="utf-8")) if STATS.exists() else {}
-    data[engine] = (data.get(engine, []) + [[_chars(text), round(sec, 2)]])[-60:]
+    data[key] = (data.get(key, []) + [[_chars(text), round(sec, 2)]])[-60:]
     STATS.parent.mkdir(parents=True, exist_ok=True)
     STATS.write_text(json.dumps(data), encoding="utf-8")
 
 
-def chars_per_sec(engine=None, default=5.0):
-    engine = engine or config.TTS_ENGINE
+def chars_per_sec(engine=None, default=4.6):
     if not STATS.exists():
         return default
-    rows = json.loads(STATS.read_text(encoding="utf-8")).get(engine, [])
+    rows = json.loads(STATS.read_text(encoding="utf-8")).get(_stat_key(engine), [])
     vals = sorted(c / max(0.5, s - 0.1) for c, s in rows if c >= 8)
     return round(vals[len(vals) // 2], 2) if len(vals) >= 3 else default
 

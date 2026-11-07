@@ -58,6 +58,14 @@ FONT = env("FONT", "Malgun Gothic")
 SUB_MARGIN_V = int(env("SUB_MARGIN_V", "470"))        # 자막 아래 여백(px). 틱톡 하단 UI 피하기
 NARR_ORIG_VOLUME = float(env("NARR_ORIG_VOLUME", "0.15"))  # 나레이션 중 원본 볼륨
 
+# --- 대시보드 원격 접속 ---
+DASHBOARD_PASSWORD = env("DASHBOARD_PASSWORD")   # 비우면 원격(터널·Wi-Fi) 접속 차단, 이 PC(127.0.0.1)는 항상 허용
+REMOTE_SSH_HOST = env("REMOTE_SSH_HOST")          # AWS 서버 주소 (예: 3.36.175.120)
+REMOTE_SSH_USER = env("REMOTE_SSH_USER", "ubuntu")
+REMOTE_SSH_KEY = env("REMOTE_SSH_KEY")            # SSH 키 파일 경로
+REMOTE_PORT = int(env("REMOTE_PORT", "8701"))     # AWS nginx 가 프록시하는 포트
+REMOTE_URL = env("REMOTE_URL", "https://auto-cn.hot-news.app")
+
 # --- 공정 이용 가이드라인 (법적 기준이 아닌 내부 안전 기준) ---
 NARR_RATIO_MIN = float(env("NARR_RATIO_MIN", "0.7"))      # 해설(나레이션) 비중 하한 → 원음 구간 30% 이하
 NARR_RATIO_MAX = float(env("NARR_RATIO_MAX", "0.8"))      # 해설 비중 상한 → 원음 구간 20% 이상

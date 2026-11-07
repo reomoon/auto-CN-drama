@@ -8,6 +8,7 @@
   python main.py catalog                        # 공식 채널에 회차가 올라온 드라마 목록
   python main.py pick "锦心似玉" [--eps 1-2]      # 카탈로그 작품 → 폴더 추가 + 회차 받기
   python main.py fetch [--only 폴더] [--eps 1-2] # 공식 채널에서 회차 받기
+  python main.py series D05_미인여 [--render]     # 시리즈 다음 편 (2편 = 2화, 없으면 공식 채널에서 받음)
   python main.py batch                          # 영상 들어온 폴더 → 대본(plan.md)
   python main.py batch --render                 # 대본 확인 끝난 폴더 → 영상
 
@@ -34,6 +35,7 @@ def main():
     w = sub.add_parser("web", help="대시보드 (순위·미리보기·대본 수정)")
     w.add_argument("--port", type=int, default=8700)
     w.add_argument("--lan", action="store_true", help="같은 Wi-Fi의 폰에서 접속 허용")
+    w.add_argument("--remote", action="store_true", help="AWS(auto-cn.hot-news.app)로 역방향 터널 연결")
 
     sub.add_parser("doctor", help="환경 점검")
     sub.add_parser("voices", help="ElevenLabs 목소리 목록")
@@ -56,6 +58,13 @@ def main():
     k.add_argument("title_zh")
     k.add_argument("--eps", default="1-2")
 
+    se = sub.add_parser("series", help="시리즈 다음 편 만들기 (N편 = N화)")
+    se.add_argument("base", help="input 폴더 이름 (예: D05_미인여)")
+    se.add_argument("--part", type=int, help="만들 편 번호 (기본: 다음 편)")
+    se.add_argument("--llm", default="auto", choices=LLM)
+    se.add_argument("--tts", choices=TTS)
+    se.add_argument("--render", action="store_true", help="대본 다음 바로 렌더")
+
     b = sub.add_parser("batch", help="input 폴더 일괄 처리")
     b.add_argument("--render", action="store_true", help="대본 대신 영상 렌더")
     b.add_argument("--only", help="폴더 이름에 이 글자가 들어간 것만")
@@ -77,7 +86,7 @@ def main():
     a = ap.parse_args()
     if a.cmd == "web":
         from pipeline import web
-        web.run(port=a.port, lan=a.lan)
+        web.run(port=a.port, lan=a.lan, remote=a.remote)
     elif a.cmd == "doctor":
         batch.doctor()
     elif a.cmd == "voices":
@@ -95,6 +104,11 @@ def main():
     elif a.cmd == "pick":
         from pipeline import fetch
         fetch.pick(a.title_zh, eps=a.eps)
+    elif a.cmd == "series":
+        from pipeline import series
+        wdir = series.make(a.base, part=a.part, engine=a.llm, tts_engine=a.tts)
+        if a.render:
+            render.run(wdir, tts_engine=a.tts)
     elif a.cmd == "batch":
         batch.batch(do_render=a.render, engine=a.llm, tts_engine=a.tts, only=a.only)
     elif a.cmd == "plan":

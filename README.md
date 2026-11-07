@@ -38,6 +38,36 @@ copy .env.example .env   # ElevenLabs 키와 Voice ID 입력
 - 작업은 GPU 하나를 쓰기 때문에 한 번에 하나씩 순서대로 실행됩니다. 오른쪽 위 버튼을 누르면 실시간 로그가 열립니다.
 - `--lan`은 같은 네트워크의 누구나 접속할 수 있으므로 집 Wi-Fi에서만 사용하세요.
 
+### 시리즈 (1편 = 1화, 2편 = 2화 ...)
+
+```powershell
+.\.venv\Scripts\python main.py series D05_미인여 --render   # 다음 편 (회차가 없으면 공식 채널에서 받음)
+.\.venv\Scripts\python main.py series D05_미인여 --part 3    # 특정 편 다시 만들기
+```
+
+- 2편부터는 첫 나레이션에서 "지난 이야기"를 한 문장으로 짚고, 앞 편 줄거리와 예고를 이어받습니다. 같은 장면은 반복하지 않습니다.
+- 매 편 마지막은 의견 + 질문 + 다음 편 떡밥 + "다음 편에서 계속됩니다"로 끝납니다.
+- 업로드 제목은 `[미인여 2편] ...`, 화면 라벨은 `〈미인여〉 2편`으로 들어갑니다.
+- 대시보드에서는 '다음 편 만들기' 버튼으로 실행합니다. 작업 폴더는 `work\D05_미인여`(1편), `work\D05_미인여_2편` ...
+
+### 외부 접속 (auto-cn.hot-news.app)
+
+```powershell
+.\.venv\Scripts\python main.py web --remote
+```
+
+```
+외부 ──HTTPS──▶ AWS Lightsail nginx (auto-cn.hot-news.app, Let's Encrypt)
+                    │ 127.0.0.1:8701
+                    ▼ SSH 역방향 터널 (PC가 연결, 끊기면 자동 재연결)
+               PC 대시보드 127.0.0.1:8700
+```
+
+- AWS는 입구 역할만 합니다. 음성 인식, 대본, 렌더는 PC에서 실행되므로 **PC가 켜져 있어야** 접속됩니다.
+- `.env`의 `DASHBOARD_PASSWORD`로 로그인합니다. 이 PC에서 `127.0.0.1`로 열 때만 비밀번호 없이 열립니다.
+- `.env` 설정: `REMOTE_SSH_HOST`, `REMOTE_SSH_USER`, `REMOTE_SSH_KEY`, `REMOTE_PORT`(기본 8701)
+- 서버 nginx 설정: `/etc/nginx/sites-available/auto-cn.hot-news.app` (업로드 최대 2GB)
+
 ### 매일 돌리는 흐름 (명령어)
 
 ```powershell

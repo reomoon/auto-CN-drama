@@ -325,7 +325,7 @@ function renderItems() {
   const q = $("#q").value.trim();
   const list = state.items.filter(x => !q || (x.drama + x.name).includes(q));
   $("#items").innerHTML = list.map(x => `<div class="li ${x.name === state.sel ? "on" : ""}" data-n="${esc(x.name)}">
-      <div class="row"><span class="t">${esc(x.drama)}</span>${x.busy ? `<span class="dot run"></span>` : chip(x.stage)}</div>
+      <div class="row"><span class="t">${esc(x.drama)}${x.part ? ` <span class="muted small">${x.part}편</span>` : ""}</span>${x.busy ? `<span class="dot run"></span>` : chip(x.stage)}</div>
       <span class="mono muted">${esc(x.name)}</span></div>`).join("") || `<div class="emptystate small">없음</div>`;
   document.querySelectorAll(".li").forEach(el => el.onclick = () => select(el.dataset.n));
 }
@@ -365,7 +365,10 @@ function renderDetail(it) {
       <div class="acts">
         <select id="llm"><option value="auto">자동 (번갈아)</option><option value="claude">Claude</option><option value="gpt">GPT</option></select>
         <button class="btn ${p ? "" : "primary"}" id="btn-plan" ${busy || !it.inputs.length ? "disabled" : ""}>${p ? "다시 만들기" : "대본 만들기"}</button>
-      </div></div></div>
+        ${p && it.has_input_dir ? `<button class="btn" id="btn-next" ${busy ? "disabled" : ""}>다음 편 만들기</button>` : ""}
+      </div>
+      ${p ? `<span class="muted small">시리즈: ${it.part || 1}편 · ‘다음 편’은 다음 회차로 이어서 만들고, 회차가 없으면 공식 채널에서 받습니다.</span>` : ""}
+      </div></div>
     <div class="step ${it.video ? "done" : ""}"><div class="n">3</div><div class="body">
       <b>렌더</b>
       <div class="acts">
@@ -388,7 +391,7 @@ function renderDetail(it) {
   const info = it.info?.hook ? `<span class="muted small">${esc(it.info.platform || "")} · ${esc(it.info.hook)}</span>` : "";
 
   $("#detail").innerHTML = `
-    <div class="dhead"><h2>${esc(it.drama)}</h2>${chip(it.stage)}<span class="mono muted">${esc(it.name)}</span></div>
+    <div class="dhead"><h2>${esc(it.drama)}${it.part ? ` ${it.part}편` : ""}</h2>${chip(it.stage)}<span class="mono muted">${esc(it.name)}</span></div>
     ${info}
     ${it.status.claim ? `<div class="alert"><b>저작권 신고가 접수된 영상입니다 (${esc(it.status.claim)})</b><ul>
       <li>틱톡·네이버 클립에서 <b>지금 바로 비공개</b>로 바꾸세요. 공개 상태로 두면 경고가 쌓여 계정이 정지될 수 있습니다.</li>
@@ -409,7 +412,8 @@ function renderDetail(it) {
     drop.ondragleave = () => drop.classList.remove("over");
     drop.ondrop = e => { e.preventDefault(); drop.classList.remove("over"); uploadFiles(it.name, e.dataTransfer.files); };
   }
-  if ($("#btn-fetch")) $("#btn-fetch").onclick = () => job({cmd: "fetch", name: it.name, eps: $("#eps").value});
+  if ($("#btn-fetch")) $("#btn-fetch").onclick = () => job({cmd: "fetch", name: it.base || it.name, eps: $("#eps").value});
+  if ($("#btn-next")) $("#btn-next").onclick = () => job({cmd: "series", name: it.base, llm: $("#llm").value});
   $("#btn-plan").onclick = () => {
     if (p && !confirm("지금 대본을 버리고 새로 만들까요? (이전 대본은 plan_prev.json으로 보관)")) return;
     job({cmd: p ? "replan" : "plan", name: it.name, llm: $("#llm").value});
