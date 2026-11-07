@@ -210,6 +210,8 @@ def item(name):
         "stage": stage,
         "busy": bool({name, base} & busy_targets()),
         "uploading": f"upload:{name}" in UPLOADS.busy_targets(),
+        # 대본(plan.json)이 완성 영상보다 나중에 바뀌었으면 다시 렌더해야 한다
+        "stale": bool(p and video.exists() and (wdir / "plan.json").stat().st_mtime > video.stat().st_mtime + 2),
         "plan": {k: p.get(k) for k in ("title", "engine", "_est_total")} if p else None,
         "video": f"/media/{name}?v={int(video.stat().st_mtime)}" if video.exists() else None,
         "post": (odir / "post.txt").read_text(encoding="utf-8") if (odir / "post.txt").exists() else None,
@@ -296,6 +298,7 @@ def plan_view(name):
             "caption": p.get("caption", ""), "hashtags": p.get("hashtags") or [], "opinion": p.get("opinion", ""),
             "engine": p.get("engine"), "est_total": round(t, 1), "cps": planmod.NARR_CPS,
             "story": p.get("story", ""), "source_total": p.get("_source_total"),
+            "title_options": p.get("title_options") or [],
             "rules": {"narr_min": config.NARR_RATIO_MIN, "narr_max": config.NARR_RATIO_MAX,
                       "src_max": config.MAX_SOURCE_RATIO,
                       "analysis_min": config.MIN_ANALYSIS},
@@ -459,6 +462,31 @@ def api_plan_save(name):
     (wdir / "plan.json").write_text(json.dumps(p, ensure_ascii=False, indent=2), encoding="utf-8")
     planmod.write_review(p, by_id, wdir / "plan.md")
     return jsonify(plan_view(name))
+
+
+@app.post("/api/titles/<name>")
+def api_titles(name):
+    """이미 만든 편의 썸네일 제목 후보 5개를 새로 뽑는다 (30초~1분)."""
+    name = _name(name)
+    w = config.WORK / name
+    p = _read(w / "plan.json")
+    if not p:
+        abort(404)
+    base = ((p.get("series") or {}).get("base")) or name
+    info = _read(INPUT / base / "info.json", {})
+    hot = ""
+    try:
+        from . import research
+        hot = research.prompt_text(_read(INPUT / base / "research.json"))
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        opts = planmod.title_options(p, p.get("drama", ""), info, hot)
+    except Exception as e:  # noqa: BLE001
+        abort(500, f"제목 후보를 못 뽑았습니다: {e}")
+    p["title_options"] = opts
+    (w / "plan.json").write_text(json.dumps(p, ensure_ascii=False, indent=2), encoding="utf-8")
+    return jsonify({"options": opts})
 
 
 # ---------------- 썸네일(첫 화면) 고르기 ----------------

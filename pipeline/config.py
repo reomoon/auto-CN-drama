@@ -70,6 +70,7 @@ BOLD_TITLE1 = env("BOLD_TITLE1", "neon")              # bold 제목 1줄 색 (�
 BOLD_TITLE2 = env("BOLD_TITLE2", "green")             # bold 제목 2줄 색 (형광 초록)
 BOLD_NARR = env("BOLD_NARR", "neon")                  # bold 해설 자막 색
 DUCK_FADE = float(env("DUCK_FADE", "0.35"))           # 나레이션 시작·끝에 원음이 줄었다 커지는 시간(초)
+COVER_SECONDS = float(env("COVER_SECONDS", "1.0"))   # 맨 앞 표지(썸네일 장면 + 제목만, 자막 없음) 길이 — 틱톡·클립 썸네일이 된다
 NARR_FONT_SIZE = int(env("NARR_FONT_SIZE", "104"))    # bold 템플릿 노란 해설 자막 크기
 DIALOG_FONT_SIZE = int(env("DIALOG_FONT_SIZE", "74")) # bold 템플릿 흰 대사 자막 크기
 FG_ZOOM = float(env("FG_ZOOM", "1.5"))                # classic 템플릿 가로 영상 확대 비율

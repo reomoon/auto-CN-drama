@@ -261,7 +261,7 @@ def _duck_expr(seg, ramp_in, ramp_out):
     return f"volume='{expr}':eval=frame"
 
 
-def render_segment(src, has_audio, start, seg, narr_mp3, out, lay, ramp_in=False, ramp_out=False):
+def render_segment(src, has_audio, start, seg, narr_mp3, out, lay, ramp_in=False, ramp_out=False, orig_vol=None):
     z = lay["zoom"]
     args = ["-ss", f"{start:.3f}", "-t", f"{seg:.3f}", "-i", src]
     a_orig = "0:a"
@@ -291,6 +291,8 @@ def render_segment(src, has_audio, start, seg, narr_mp3, out, lay, ramp_in=False
         args += ["-i", narr_mp3]
         fc += (f";[{idx}:a]aresample=48000,aformat=channel_layouts=stereo,adelay=150|150,volume=1.5[na];"
                f"[oa][na]amix=inputs=2:duration=first:normalize=0[a]")
+    elif orig_vol is not None:
+        fc += f",volume={orig_vol}[a]"
     else:
         fc += "[a]"
     media.ffmpeg([*args, "-filter_complex", fc, "-map", "[v]", "-map", "[a]", "-t", f"{seg:.3f}",
@@ -335,33 +337,30 @@ def run(wdir, tts_engine=None, voice=None):
             mp3 = tts.synth(narr, wdir / "tts", engine=tts_engine)
             nd = media.duration(mp3)
             tts.record(narr, nd, engine=tts_engine)
-        ct = plan.get("cover_time") if i == 1 and narr else None
-        if ct and 0 <= int(ct.get("src", 0)) < len(sources):
-            # 대시보드에서 직접 고른 썸네일 장면
-            src = sources[int(ct["src"])]
-            sdur = info[src]["duration"]
-            start = max(0.0, float(ct["t"]) - 0.05)
-            print(f"  · 썸네일(첫 화면): {int(start // 60)}:{start % 60:04.1f} (직접 고른 장면)")
-        elif i == 1 and narr:
-            # 첫 화면 = 썸네일: 대본이 고른 가장 자극적인 장면(cover) 근처에서 얼굴이 크고 선명한 순간부터 시작
-            cv = by_id.get(plan.get("cover") or "")
-            picked_by_plan = bool(cv)
-            if not cv:   # 대본에 썸네일 장면이 없으면: 대본에 쓴 장면 중 가장 격한(음량 최고) 대사
-                used = [by_id[f"L{n}"] for t in tl for n in range(int(t["from"][1:]), int(t["to"][1:]) + 1)
-                        if f"L{n}" in by_id]
-                cv = max(used, key=lambda x: x.get("energy", 0)) if used else None
-            if cv:
-                src, sdur = sources[cv["src"]], info[sources[cv["src"]]]["duration"]
-                t0, t1 = max(0.0, cv["start"] - 1.0), min(sdur, cv["end"] + 3.0)
+        if i == 1:
+            # 표지(첫 1초 = 썸네일) 장면을 따로 정한다. 나레이션은 대본에 정해진 첫 장면 위에서 시작한다.
+            ct = plan.get("cover_time")
+            if ct and 0 <= int(ct.get("src", 0)) < len(sources):
+                cover_src = sources[int(ct["src"])]
+                cover_start = max(0.0, float(ct["t"]) - 0.05)
+                why = "직접 고른 장면"
             else:
-                t0, t1 = start, min(sdur, start + 12.0)
-            s_st, s_en = media.story_range(src)
-            t0, t1 = max(t0, s_st), min(t1, s_en - 1)
-            if t1 <= t0:
-                t0, t1 = s_st, min(s_en - 1, s_st + 12.0)
-            start = max(0.0, pick_cover(src, t0, t1) - 0.05)
-            print(f"  · 썸네일(첫 화면): {int(start // 60)}:{start % 60:04.1f} "
-                  + ("(대본이 고른 장면)" if picked_by_plan else "(가장 격한 장면 근처, 선명한 얼굴)"))
+                cv = by_id.get(plan.get("cover") or "")
+                why = "대본이 고른 장면" if cv else "가장 격한 장면 근처, 선명한 얼굴"
+                if not cv:   # 대본에 썸네일 장면이 없으면: 대본에 쓴 장면 중 가장 격한(음량 최고) 대사
+                    used = [by_id[f"L{n}"] for t in tl for n in range(int(t["from"][1:]), int(t["to"][1:]) + 1)
+                            if f"L{n}" in by_id]
+                    cv = max(used, key=lambda x: x.get("energy", 0)) if used else None
+                cover_src = sources[cv["src"]] if cv else src
+                csd = info[cover_src]["duration"]
+                t0, t1 = ((max(0.0, cv["start"] - 1.0), min(csd, cv["end"] + 3.0)) if cv
+                          else (start, min(csd, start + 12.0)))
+                s_st, s_en = media.story_range(cover_src)
+                t0, t1 = max(t0, s_st), min(t1, s_en - 1)
+                if t1 <= t0:
+                    t0, t1 = s_st, min(s_en - 1, s_st + 12.0)
+                cover_start = max(0.0, pick_cover(cover_src, t0, t1) - 0.05)
+            print(f"  · 썸네일(표지): {int(cover_start // 60)}:{cover_start % 60:04.1f} ({why})")
         seg = nd + 0.5 if narr else clip
         # 오프닝 곡·엔딩 크레딧 위에 나레이션이 깔리지 않게 본편 안으로 옮긴다
         s_st, s_en = media.story_range(src)
@@ -378,8 +377,8 @@ def run(wdir, tts_engine=None, voice=None):
         items.append({"it": it, "idx": i - 1, "src": src, "start": start, "seg": seg, "narr": narr,
                       "mp3": mp3, "nd": nd})
 
-    # 2단계: 너무 길면(8% 배속으로도 90초 초과) 덜 격한 원본 장면부터 뺀다
-    limit = (config.MAX_SEC - 0.5) * 1.08
+    # 2단계: 너무 길면(8% 배속으로도 90초 초과) 덜 격한 원본 장면부터 뺀다 (표지 길이 포함)
+    limit = (config.MAX_SEC - 0.5) * 1.08 - max(0.0, config.COVER_SECONDS)
     while sum(x["seg"] for x in items) > limit:
         cands = [x for x in items[1:-1] if not x["narr"]]
         if not cands:
@@ -393,6 +392,16 @@ def run(wdir, tts_engine=None, voice=None):
     events, segs, marks, T = [], [], [], 0.0
     tl = [x["it"] for x in items]
     is_narr = [bool(x["narr"]) for x in items]
+
+    # 맨 앞 표지: 썸네일 장면에 제목만 (나레이션·자막 없음). 틱톡·클립은 첫 화면을 썸네일로 쓴다.
+    cover = config.COVER_SECONDS
+    if cover > 0 and items:
+        out = rdir / "seg_00.mp4"
+        print(f"  · 표지 {cover:.1f}초 (썸네일 장면 + 제목만, 그다음 대본 첫 장면에서 나레이션 시작)")
+        render_segment(cover_src, info[cover_src]["has_audio"], cover_start, cover, None, str(out), lay,
+                       orig_vol=config.NARR_ORIG_VOLUME)
+        segs.append(out.name)
+        T = cover
     for i, x in enumerate(items, 1):
         it, src, start, seg, narr, mp3, nd = (x["it"], x["src"], x["start"], x["seg"], x["narr"], x["mp3"], x["nd"])
         print(f"  · [{i}/{len(tl)}] 구간 편집 {seg:.1f}초")

@@ -142,6 +142,14 @@ main{max-width:1280px;margin:0 auto;padding:24px}
 .ep.have{background:var(--done-soft);color:var(--done);border-color:transparent;cursor:default;font-weight:700}
 .ep.made{background:var(--done-soft);color:var(--done);border-color:transparent;font-weight:700}
 .ep.here{outline:2px solid var(--accent-ink);outline-offset:1px}
+.nextbar{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;padding:12px 16px;
+  border-radius:var(--radius);background:var(--info-soft);font-weight:600;font-size:14px}
+.nextbar.busy{background:var(--warn-soft)}
+.step.next{background:var(--info-soft);border-radius:12px;padding:10px;margin:0 -10px;border-top-color:transparent}
+.card.next{box-shadow:0 0 0 2px var(--info)}
+.flash{animation:flash 1.6s}
+@keyframes flash{0%,60%{box-shadow:0 0 0 3px var(--info)}100%{box-shadow:none}}
+.topts{display:flex;flex-direction:column;gap:6px;align-items:flex-start}
 .ep.made.on{background:var(--accent-strong);border-color:var(--accent-ink);color:var(--accent-ink);font-weight:700}
 .files span{background:var(--panel-2);border:1px solid var(--line);border-radius:6px;padding:1px 8px}
 select{border:1px solid var(--line);background:var(--panel);border-radius:10px;padding:6px 8px}
@@ -261,7 +269,7 @@ async function api(path, opt = {}) {
   }
   return r.json();
 }
-function toast(msg) { const t = $("#toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove("show"), 2600); }
+function toast(msg) { const t = $("#toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove("show"), Math.max(2600, msg.length * 90)); }
 async function copy(text) {
   try { await navigator.clipboard.writeText(text); }
   catch { const ta = document.createElement("textarea"); ta.value = text; document.body.appendChild(ta); ta.select(); document.execCommand("copy"); ta.remove(); }
@@ -406,8 +414,21 @@ function renderDetail(it) {
     <div class="acts"><button class="btn primary" id="btn-fetch" ${busy ? "disabled" : ""}>선택한 회차 받기</button>
       <span class="muted small" id="ep-count">받을 회차를 눌러 고르세요</span></div>` : "";
   const canUpload = it.has_input_dir || !p;
+  // 다음 할 일
+  const uploaded = it.status.tiktok || it.status.clip;
+  const ns = busy ? {n: 0, txt: "작업 중입니다 — 오른쪽 위 작업 로그에서 진행 상황을 볼 수 있습니다."}
+    : it.status.claim ? null
+    : !it.inputs.length && !p ? {n: 1, txt: "① 원본 회차를 받으세요.", btn: "회차 고르러 가기", act: "s1"}
+    : !p ? {n: 2, txt: "② 만들 편을 고르고 ‘선택한 편 대본 만들기’를 누르세요.", btn: "대본 단계로", act: "s2"}
+    : !it.video ? {n: 3, txt: "③ 대본이 준비됐습니다. 대본·썸네일을 확인하고 렌더 영상을 만드세요.", btn: "렌더 영상 만들기", act: "render"}
+    : it.stale ? {n: 3, txt: "③ 대본이 바뀌었습니다. 다시 렌더해야 영상에 반영됩니다.", btn: "렌더 영상 다시 만들기", act: "render"}
+    : !uploaded ? {n: 4, txt: "④ 영상이 완성됐습니다. 왼쪽에서 확인하고 올리세요.", btn: "업로드로 가기", act: "s4"}
+    : {n: 5, txt: "✓ 업로드까지 끝났습니다. 다음 편을 만드세요.", btn: it.has_input_dir ? "다음 편 만들기" : "", act: "next"};
+  const nextBar = ns ? `<div class="nextbar ${ns.n ? "" : "busy"}"><span>${ns.txt}</span>
+      ${ns.btn ? `<button class="btn primary" id="btn-nextstep">${ns.btn}</button>` : ""}</div>` : "";
+  const stepCls = n => (ns && ns.n === n ? "next" : "");
   const steps = `
-    <div class="step ${it.inputs.length || p ? "done" : ""}"><div class="n">1</div><div class="body">
+    <div class="step ${it.inputs.length || p ? "done" : ""} ${stepCls(1)}" id="step1"><div class="n">1</div><div class="body">
       <b>원본 영상</b>${files}
       ${it.info?.title_zh && it.has_input_dir && offEps.length ? `${epPicker}
         <span class="muted small">공식 채널에 올라온 회차 ${offEps.length}개 · 인증된 플랫폼 공식 채널 영상만 받습니다 · 회차당 약 0.5GB</span>` : ""}
@@ -421,7 +442,7 @@ function renderDetail(it) {
       ${(it.info?.official || []).length ? `<span class="small">${it.info.official.map(o => `<a href="${esc(o.url)}" target="_blank" rel="noopener">${o.ep}화 · ${esc(o.channel)}</a>`).join(" · ")}</span>` : ""}
       ${canUpload ? `<div class="drop" id="drop">또는 회차 영상을 끌어다 놓거나 눌러서 선택 (1~3개 권장)<input type="file" id="file" accept="video/*" multiple hidden></div>` : `<span class="muted small">직접 실행한 작업이라 원본 폴더가 없습니다.</span>`}
     </div></div>
-    <div class="step ${p ? "done" : ""}"><div class="n">2</div><div class="body">
+    <div class="step ${p ? "done" : ""} ${stepCls(2)}" id="step2"><div class="n">2</div><div class="body">
       <b>하이라이트 + 대본</b>
       ${p ? `<span class="muted small">이 편(${it.part || 1}편): ${esc(p.engine)} 작성 · 예상 ${p.est_total}초</span>` : ""}
       ${(it.parts || []).length ? `<span class="small">만들 편을 고르세요</span>
@@ -445,7 +466,7 @@ function renderDetail(it) {
       </div>
       ${p ? `<span class="muted small">시리즈: ${it.part || 1}편 · ‘다음 편’은 다음 회차로 이어서 만들고, 회차가 없으면 공식 채널에서 받습니다.</span>` : ""}`}
       </div></div>
-    <div class="step ${it.video ? "done" : ""}"><div class="n">3</div><div class="body">
+    <div class="step ${it.video && !it.stale ? "done" : ""} ${stepCls(3)}" id="step3"><div class="n">3</div><div class="body">
       <b>렌더 영상 만들기${it.part ? ` · ${it.part}편` : ""}</b>
       ${it.part ? `<span class="muted small">지금 보고 있는 ${esc(it.drama)} ${it.part}편을 렌더합니다. 다른 편은 위에서 그 편을 눌러 연 뒤 렌더하세요.</span>` : ""}
       <div class="acts">
@@ -462,7 +483,7 @@ function renderDetail(it) {
     </div></div>`;
   const tags = p ? p.hashtags.join(" ") : "";
   const upload = p ? `
-    <div class="card box"><h4>업로드 문구</h4>
+    <div class="card box ${stepCls(4)}" id="uploadbox"><h4>업로드 문구</h4>
       <div class="copyrow"><span class="label">제목</span><span class="val">${esc(p.title)}</span><button class="btn ghost" data-copy="title">복사</button></div>
       <div class="copyrow"><span class="label">캡션</span><span class="val">${esc(p.caption)}\n${esc(tags)}</span><button class="btn ghost" data-copy="caption">복사</button></div>
       ${it.video ? `<div class="acts" style="margin-top:10px">
@@ -485,6 +506,7 @@ function renderDetail(it) {
   $("#detail").innerHTML = `
     <div class="dhead"><h2>${esc(it.drama)}${it.part ? ` ${it.part}편` : ""}</h2>${chip(it.stage)}<span class="mono muted">${esc(it.name)}</span></div>
     ${info}
+    ${nextBar}
     ${it.status.claim ? `<div class="alert"><b>저작권 신고가 접수된 영상입니다 (${esc(it.status.claim)})</b><ul>
       <li>틱톡·네이버 클립에서 <b>지금 바로 비공개</b>로 바꾸세요. 공개 상태로 두면 경고가 쌓여 계정이 정지될 수 있습니다.</li>
       <li>이의제기는 신중하게 하세요. 해설 비중이 충분하고 원작 사용량이 적다는 근거가 있을 때만 하고, 잘못된 이의제기는 채널 정지로 이어질 수 있습니다.</li>
@@ -513,6 +535,16 @@ function renderDetail(it) {
     b.classList.toggle("on", picked.has(e));
     $("#ep-count").textContent = picked.size ? `${[...picked].sort((x, y) => x - y).join(", ")}화 선택 (${picked.size}개, 약 ${(picked.size * 0.5).toFixed(1)}GB)` : "받을 회차를 눌러 고르세요";
   });
+  if ($("#btn-nextstep")) $("#btn-nextstep").onclick = () => {
+    const go = id => {
+      const el = document.getElementById(id); if (!el) return;
+      el.scrollIntoView({behavior: "smooth", block: "center"});
+      el.classList.add("flash"); setTimeout(() => el.classList.remove("flash"), 1600);
+    };
+    if (ns.act === "render") { go("step3"); return $("#btn-final").click(); }
+    if (ns.act === "next") return job({cmd: "series", name: it.base || it.name, llm: $("#llm")?.value || "auto"});
+    go({s1: "step1", s2: "step2", s4: "uploadbox"}[ns.act]);
+  };
   if ($("#btn-fetch")) $("#btn-fetch").onclick = () => {
     if ($("#eppick")) {
       if (!picked.size) return toast("받을 회차를 먼저 고르세요");
@@ -723,6 +755,10 @@ function timelineHTML() {
     <div class="fair" id="fair"></div>
     ${p.story ? `<div class="story"><span class="muted small">줄거리</span> ${esc(p.story)}</div>` : ""}
     <div class="meta-edit">
+      <div class="full topts"><span class="small"><b>썸네일 제목 후보</b> <span class="muted">누르면 상단 문구·업로드 제목에 들어갑니다</span></span>
+        <div class="eps" id="topts">${(p.title_options || []).map((o, i) => `<button class="ep" data-topt="${i}">${esc(o.lines.join(" / "))}</button>`).join("")
+          || `<span class="muted small">아직 후보가 없습니다.</span>`}</div>
+        <button class="btn ghost small" id="btn-titles">제목 후보 ${p.title_options?.length ? "다시 " : ""}뽑기 (30초~1분)</button></div>
       <label class="full">업로드 제목<input class="field" data-meta="title" value="${esc(e.title)}"></label>
       <label>상단 문구 1줄<input class="field" data-ov="0" value="${esc(e.overlay_title[0])}"></label>
       <label>상단 문구 2줄<input class="field" data-ov="1" value="${esc(e.overlay_title[1])}"></label>
@@ -746,6 +782,27 @@ function bindTimeline(it) {
     const v = $("#vid"); if (!v) return toast("렌더된 영상이 없습니다");
     v.currentTime = +b.dataset.seek; v.play();
   });
+  const applyTitle = o => {
+    const tag = (state.edits.title.match(/^\[[^\]]*\]\s*/) || [""])[0];
+    state.edits.overlay_title = [o.lines[0] || "", o.lines[1] || ""];
+    state.edits.title = tag + (o.title || o.lines.join(" ")).replace(/^\[[^\]]*\]\s*/, "");
+    $("[data-ov='0']").value = state.edits.overlay_title[0];
+    $("[data-ov='1']").value = state.edits.overlay_title[1];
+    $("[data-meta='title']").value = state.edits.title;
+    dirty(); toast("제목을 바꿨습니다 — ‘저장’ 후 다시 렌더하면 반영됩니다");
+  };
+  document.querySelectorAll("[data-topt]").forEach(b => b.onclick = () => applyTitle(state.plan.title_options[+b.dataset.topt]));
+  if ($("#btn-titles")) $("#btn-titles").onclick = async () => {
+    const b = $("#btn-titles"); b.disabled = true; b.textContent = "뽑는 중… (30초~1분)";
+    try {
+      const d = await api(`/api/titles/${encodeURIComponent(it.name)}`, {method: "POST", body: {}});
+      state.plan.title_options = d.options;
+      $("#topts").innerHTML = d.options.map((o, i) => `<button class="ep" data-topt="${i}">${esc(o.lines.join(" / "))}</button>`).join("");
+      document.querySelectorAll("[data-topt]").forEach(x => x.onclick = () => applyTitle(d.options[+x.dataset.topt]));
+      toast("제목 후보 5개를 뽑았습니다 — 마음에 드는 걸 누르세요");
+    } catch (err) { toast(err.message); }
+    b.disabled = false; b.textContent = "제목 후보 다시 뽑기 (30초~1분)";
+  };
   $("#btn-save").onclick = async () => {
     const e = state.edits;
     try {
@@ -800,7 +857,14 @@ async function pollJobs(now) {
     document.querySelectorAll(".job pre").forEach(pre => pre.scrollTop = pre.scrollHeight);
     if (lastActive && active.length < lastActive) {   // 작업이 끝나면 화면 갱신
       const fin = jobs.find(j => j.status === "done" || j.status === "failed");
-      if (fin) toast(`${fin.label} — ${fin.status === "done" ? "완료" : "실패 (로그 확인)"}`);
+      if (fin) {
+        const nextHint = fin.status !== "done" ? "실패 — 작업 로그를 확인하세요"
+          : /대본/.test(fin.label) ? "완료 — 대본을 확인하고 ‘렌더 영상 만들기’를 누르세요"
+          : /렌더 영상/.test(fin.label) ? "완료 — 영상을 확인하고 ‘틱톡/클립에 올리기’를 누르세요"
+          : /올리기/.test(fin.label) ? "완료 — 업로드됐습니다. 다음 편을 만드세요"
+          : /가져오기|찾기/.test(fin.label) ? "완료 — 만들 편을 고르고 대본을 만드세요" : "완료";
+        toast(`${fin.label} ${nextHint}`);
+      }
       await Promise.all([loadItems(), loadRank()]);
       if (state.sel && !state.dirty) select(state.sel);
     } else if (active.length && state.sel) renderItems();

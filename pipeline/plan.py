@@ -350,6 +350,44 @@ def translate(plan, by_id, engine, drama, info):
             it["subs"] = {}
 
 
+TITLE_PROMPT = """너는 조회수가 잘 나오는 중국 드라마 해설 쇼츠의 썸네일 제목 담당이다.
+드라마: {drama}
+{info}이번 편 줄거리: {story}
+이번 편 나레이션:
+{narr}
+{hot}
+썸네일 상단 2줄 제목 후보 5개를 만들어라. 스크롤하던 손가락을 멈추게 해야 한다.
+- 1줄: 누가/무엇이 (구체적 대상: 남편, 보모, 시어머니, 절친, 서녀 등), 2줄: 충격 포인트 (정체·배신·반전·두 얼굴)
+- 각 줄 12자 이내, 감정을 건드리는 단어를 쓴다: 소름, 진짜 정체, 두 얼굴, 배신, 미쳤다, 경악, 몰래, 결국 등
+- 결말은 숨기고 궁금하게. 과장은 해도 되지만 이번 편에 실제로 나오는 사실만 쓴다 (거짓 낚시 금지)
+- 밋밋한 요약(예: "5주년 꽃다발 속 / 남편의 호텔 사진")은 안 된다
+  좋은 예) ["남편과 가정부가 숨긴", "소름 돋는 진짜 관계"], ["5년 결혼이 전부 사기", "남편의 두 얼굴"]
+- title(업로드 제목)도 같은 세기로 30자 이내
+
+JSON만 출력: {{"options": [{{"lines": ["1줄", "2줄"], "title": "업로드 제목"}}, ... 5개, 가장 자극적인 것부터]}}"""
+
+
+def title_options(plan, drama, info=None, hot="", engine="claude"):
+    """썸네일 상단 제목 후보 5개 (가장 자극적인 것부터)."""
+    narr = "\n".join(f"- {it['narration']}" for it in plan.get("timeline", []) if (it.get("narration") or "").strip())
+    prompt = TITLE_PROMPT.format(drama=drama, info=info_text(info), story=plan.get("story", ""), narr=narr,
+                                 hot=hot or "")
+
+    def validate(d):
+        opts = (d or {}).get("options") if isinstance(d, dict) else None
+        if not opts:
+            return ["options 가 없음"]
+        bad = [i for i, o in enumerate(opts, 1) if not (isinstance(o.get("lines"), list) and o["lines"])]
+        return [f"{', '.join(map(str, bad))}번 후보에 lines 가 없음"] if bad else []
+
+    d, _ = llm.generate_json(prompt, engine=engine, validate=validate, retries=1, label="썸네일 제목 후보 뽑는 중")
+    out = []
+    for o in d["options"][:5]:
+        lines = [str(x).strip() for x in o["lines"] if str(x).strip()][:2]
+        out.append({"lines": lines, "title": str(o.get("title") or " ".join(lines)).strip()})
+    return out
+
+
 def write_review(plan, by_id, path):
     L = [f"# {plan['drama']} — 검토용", "",
          f"- 제목: **{plan.get('title', '')}**",
@@ -469,6 +507,16 @@ def run(drama, videos, engine="auto", name=None, tts_engine=None, info=None, ser
                                    label="하이라이트 고르고 대본 쓰는 중")
     print(f"  · 줄거리: {plan.get('story', '')}")
     translate(plan, by_id, used, drama, info)
+    try:
+        opts = title_options(plan, drama, info, hot, engine=used)
+        if opts:
+            plan["title_options"] = opts
+            plan["overlay_title"] = opts[0]["lines"]          # 가장 자극적인 후보를 기본으로
+            if opts[0].get("title"):
+                plan["title"] = re.sub(r"^\[[^\]]*\]\s*", "", opts[0]["title"])   # 편 번호는 아래에서 붙인다
+            print(f"  · 썸네일 제목: {' / '.join(opts[0]['lines'])} (후보 {len(opts)}개)")
+    except Exception as e:  # noqa: BLE001
+        print(f"  ! 제목 후보 뽑기 실패 (대본 제목 사용): {e}")
     if series:
         plan["series"] = {k: series[k] for k in ("base", "part", "eps", "piece", "split") if k in series}
         tag = f"[{drama} {series['part']}편]"
