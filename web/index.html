@@ -8,7 +8,7 @@
 :root{
   --bg:#eceff4; --panel:#fff; --panel-2:#f5f7fa; --line:#e4e8ee; --text:#1e1e23; --muted:#8a8f99;
   --accent:#e9ecf1; --accent-strong:#dde1e8; --accent-soft:#f1f3f6; --accent-ink:#2b2f36; --accent-line:#c9ced8;
-  --ok:#5b616b; --ok-soft:#eef0f3; --warn:#e09a00; --warn-soft:#fff6dd;
+  --ok:#5b616b; --ok-soft:#eef0f3; --done:#03a94d; --done-soft:#e4f7ec; --warn:#e09a00; --warn-soft:#fff6dd;
   --info:#2e7cf6; --info-soft:#e8f1ff; --danger:#f04452; --danger-soft:#feecee;
   --shadow:0 1px 3px rgba(20,30,60,.05),0 4px 14px rgba(20,30,60,.05);
   --radius:18px; --mono:ui-monospace,"Cascadia Mono",Consolas,monospace;
@@ -16,7 +16,7 @@
 @media (prefers-color-scheme:dark){
   :root{--bg:#16181c; --panel:#202329; --panel-2:#272b32; --line:#30353d; --text:#eceef2; --muted:#9aa0aa;
     --accent:#353a42; --accent-strong:#434952; --accent-soft:#2a2e35; --accent-ink:#eceef2; --accent-line:#555c66;
-    --ok:#b4bac4; --ok-soft:#2a2e35; --warn:#f2b636; --warn-soft:#3a2e12;
+    --ok:#b4bac4; --ok-soft:#2a2e35; --done:#3ddc84; --done-soft:#143323; --warn:#f2b636; --warn-soft:#3a2e12;
     --info:#6ea2ff; --info-soft:#1a2740; --danger:#ff6b76; --danger-soft:#3d1c20; --shadow:none}
 }
 *{box-sizing:border-box}
@@ -139,8 +139,8 @@ main{max-width:1280px;margin:0 auto;padding:24px}
 .ep{border:1px solid var(--line);background:var(--panel);border-radius:8px;padding:4px 9px;font-size:13px;cursor:pointer;min-width:48px}
 .ep:hover{border-color:var(--muted)}
 .ep.on{background:var(--accent-strong);border-color:var(--accent-ink);color:var(--accent-ink);font-weight:700}
-.ep.have{background:var(--ok-soft);color:var(--ok);border-color:transparent;cursor:default}
-.ep.made{background:var(--ok-soft);color:var(--ok);border-color:transparent}
+.ep.have{background:var(--done-soft);color:var(--done);border-color:transparent;cursor:default;font-weight:700}
+.ep.made{background:var(--done-soft);color:var(--done);border-color:transparent;font-weight:700}
 .ep.made.on{background:var(--accent-strong);border-color:var(--accent-ink);color:var(--accent-ink);font-weight:700}
 .files span{background:var(--panel-2);border:1px solid var(--line);border-radius:6px;padding:1px 8px}
 select{border:1px solid var(--line);background:var(--panel);border-radius:10px;padding:6px 8px}
@@ -421,7 +421,7 @@ function renderDetail(it) {
       ${p ? `<span class="muted small">이 편(${it.part || 1}편): ${esc(p.engine)} 작성 · 예상 ${p.est_total}초</span>` : ""}
       ${(it.parts || []).length ? `<span class="small">만들 편을 고르세요</span>
       <div class="eps" id="partpick">${it.parts.map(x => `<button class="ep ${x.status ? "made" : ""}" data-part="${x.n}"
-          title="${x.fetch ? `${x.ep}화는 아직 안 받아서, 만들 때 공식 채널에서 받습니다` : ""}">${esc(x.label)}${x.status ? ` · ${x.status}` : ""}${x.fetch ? " ⤓" : ""}</button>`).join("")}</div>
+          title="${x.fetch ? `${x.ep}화는 아직 안 받아서, 만들 때 공식 채널에서 받습니다` : ""}">${x.status ? "✓ " : ""}${esc(x.label)}${x.status ? ` · ${x.status}` : ""}${x.fetch ? " ⤓" : ""}</button>`).join("")}</div>
       <div class="acts">
         <select id="llm"><option value="auto">자동 (번갈아)</option><option value="claude">Claude</option><option value="gpt">GPT</option></select>
         <button class="btn primary" id="btn-parts" ${busy ? "disabled" : ""}>선택한 편 대본 만들기</button>
