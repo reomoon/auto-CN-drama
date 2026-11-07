@@ -5,6 +5,9 @@
   python main.py voices                         # ElevenLabs 목소리 목록
   python main.py rank [--short] [--n 20]        # 인기 순위
   python main.py inbox [--short] [--top 10]     # 순위 → input\드라마별 폴더
+  python main.py catalog                        # 공식 채널에 회차가 올라온 드라마 목록
+  python main.py pick "锦心似玉" [--eps 1-2]      # 카탈로그 작품 → 폴더 추가 + 회차 받기
+  python main.py fetch [--only 폴더] [--eps 1-2] # 공식 채널에서 회차 받기
   python main.py batch                          # 영상 들어온 폴더 → 대본(plan.md)
   python main.py batch --render                 # 대본 확인 끝난 폴더 → 영상
 
@@ -44,6 +47,15 @@ def main():
     i.add_argument("--top", type=int, default=10)
     i.add_argument("--file", help="사용할 순위 JSON (기본: 가장 최근)")
 
+    f = sub.add_parser("fetch", help="공식 채널에서 회차 영상 받기")
+    f.add_argument("--only", help="폴더 이름 (없으면 input 의 모든 폴더)")
+    f.add_argument("--eps", default="1-2", help="회차 (예: 1-2, 1,3)")
+
+    sub.add_parser("catalog", help="공식 채널에 회차가 올라와 있는 드라마 목록")
+    k = sub.add_parser("pick", help="카탈로그 작품을 폴더로 추가하고 회차 받기")
+    k.add_argument("title_zh")
+    k.add_argument("--eps", default="1-2")
+
     b = sub.add_parser("batch", help="input 폴더 일괄 처리")
     b.add_argument("--render", action="store_true", help="대본 대신 영상 렌더")
     b.add_argument("--only", help="폴더 이름에 이 글자가 들어간 것만")
@@ -74,6 +86,15 @@ def main():
         rank.run(n=a.n, short=a.short)
     elif a.cmd == "inbox":
         batch.inbox(rank_file=a.file, short=a.short, top=a.top)
+    elif a.cmd == "fetch":
+        from pipeline import fetch
+        fetch.fetch_many(only=a.only, eps=a.eps)
+    elif a.cmd == "catalog":
+        from pipeline import fetch
+        fetch.catalog()
+    elif a.cmd == "pick":
+        from pipeline import fetch
+        fetch.pick(a.title_zh, eps=a.eps)
     elif a.cmd == "batch":
         batch.batch(do_render=a.render, engine=a.llm, tts_engine=a.tts, only=a.only)
     elif a.cmd == "plan":

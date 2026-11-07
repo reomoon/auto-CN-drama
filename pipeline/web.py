@@ -95,7 +95,9 @@ def item(name):
     p = _read(wdir / "plan.json")
     st = _read(odir / "status.json", {})
     vids = _videos(d_in) if d_in.is_dir() else []
-    if video.exists() and (st.get("tiktok") or st.get("clip")):
+    if st.get("claim"):
+        stage = "claimed"
+    elif video.exists() and (st.get("tiktok") or st.get("clip")):
         stage = "uploaded"
     elif video.exists():
         stage = "video"
@@ -144,7 +146,7 @@ def plan_view(name):
         sec, _ = planmod.item_seconds(it, by_id)
         rng = range(int(it["from"][1:]), int(it["to"][1:]) + 1)
         rows.append({
-            "narration": it.get("narration") or "",
+            "narration": it.get("narration") or "", "role": it.get("role") or "",
             "src": a["src"], "from": it["from"], "to": it["to"],
             "src_start": a["start"], "src_end": b["end"], "est": round(sec, 1),
             "at": marks[i][0] if i < len(marks) else round(t, 1),
@@ -155,6 +157,9 @@ def plan_view(name):
     return {"title": p.get("title", ""), "overlay_title": p.get("overlay_title") or [],
             "caption": p.get("caption", ""), "hashtags": p.get("hashtags") or [], "opinion": p.get("opinion", ""),
             "engine": p.get("engine"), "est_total": round(t, 1), "cps": planmod.NARR_CPS,
+            "story": p.get("story", ""), "source_total": p.get("_source_total"),
+            "rules": {"narr_min": config.NARR_RATIO_MIN, "src_max": config.MAX_SOURCE_RATIO,
+                      "analysis_min": config.MIN_ANALYSIS},
             "rendered": bool(marks), "timeline": rows}
 
 
@@ -185,6 +190,25 @@ def api_rank():
             x["stage"] = item(folder)["stage"] if x["folder"] else None
         out[key] = {"date": files[-1].stem.split("_")[-1], "items": data}
     return jsonify(out)
+
+
+@app.get("/api/catalog")
+def api_catalog():
+    files = sorted(config.DATA.glob("official_*.json"))
+    if not files:
+        return jsonify({"date": None, "items": []})
+    rows = _read(files[-1], [])
+    folders = {}
+    for d in (INPUT.iterdir() if INPUT.exists() else []):
+        zh = (_read(d / "info.json", {}) or {}).get("title_zh")
+        if d.is_dir() and zh:
+            folders[zh] = d.name
+    from .fetch import _norm
+    norm_folders = {_norm(k): v for k, v in folders.items()}
+    for x in rows:
+        x["folder"] = norm_folders.get(_norm(x["title_zh"]))
+        x["stage"] = item(x["folder"])["stage"] if x["folder"] else None
+    return jsonify({"date": files[-1].stem.split("_")[-1], "items": rows})
 
 
 @app.get("/api/items")
@@ -248,7 +272,7 @@ def api_status(name):
     if not odir.exists():
         abort(404)
     st = _read(odir / "status.json", {})
-    for k in ("tiktok", "clip"):
+    for k in ("tiktok", "clip", "claim"):
         if k in (request.get_json(force=True) or {}):
             st[k] = time.strftime("%Y-%m-%d %H:%M") if request.json[k] else None
     (odir / "status.json").write_text(json.dumps(st, ensure_ascii=False), encoding="utf-8")
@@ -293,6 +317,18 @@ def api_job():
         job = JOBS.add(f"{kind} 순위 새로고침", ["rank", "--n", "20"] + (["--short"] if short else []))
     elif cmd == "inbox":
         job = JOBS.add(f"{kind} 폴더 만들기", ["inbox"] + (["--short"] if short else []))
+    elif cmd == "catalog":
+        job = JOBS.add("공식 영상 목록 새로고침", ["catalog"])
+    elif cmd == "pick":
+        zh = str(b.get("title_zh") or "").strip()
+        if not zh or len(zh) > 40:
+            abort(400, "작품 제목이 없습니다")
+        eps = b.get("eps") if re.fullmatch(r"[\d,\-]{1,20}", str(b.get("eps", ""))) else "1-2"
+        job = JOBS.add(f"공식 영상 가져오기 · {zh}", ["pick", zh, "--eps", eps])
+    elif cmd == "fetch":
+        name = _name(name)
+        eps = b.get("eps") if re.fullmatch(r"[\d,\-]{1,20}", str(b.get("eps", ""))) else "1-2"
+        job = JOBS.add(f"공식 영상 찾기 · {name}", ["fetch", "--only", name, "--eps", eps], target=name)
     elif cmd in ("plan", "replan"):
         name = _name(name)
         llm = b.get("llm") if b.get("llm") in ("claude", "gpt") else "auto"

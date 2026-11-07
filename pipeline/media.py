@@ -11,10 +11,13 @@ from . import config
 
 
 def probe(path):
-    r = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration:stream=codec_type",
+    r = subprocess.run(["ffprobe", "-v", "error", "-show_entries",
+                        "format=duration:stream=codec_type,width,height",
                         "-of", "json", str(path)], capture_output=True, text=True, check=True)
     info = json.loads(r.stdout)
+    v = next((s for s in info.get("streams", []) if s.get("codec_type") == "video"), {})
     return {"duration": float(info["format"]["duration"]),
+            "width": v.get("width") or 1920, "height": v.get("height") or 1080,
             "has_audio": any(s.get("codec_type") == "audio" for s in info.get("streams", []))}
 
 

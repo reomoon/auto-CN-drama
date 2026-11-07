@@ -41,7 +41,15 @@ EDGE_VOICE = env("EDGE_VOICE", "ko-KR-InJoonNeural")
 MAX_SEC = float(env("MAX_SEC", "90"))
 TARGET_MIN_SEC = float(env("TARGET_MIN_SEC", "62"))   # 틱톡 리워드는 1분 초과 필요
 TARGET_MAX_SEC = float(env("TARGET_MAX_SEC", "86"))
-FG_ZOOM = float(env("FG_ZOOM", "1.15"))               # 가로 영상 확대 비율
+FG_ZOOM = float(env("FG_ZOOM", "1.5"))                # 가로 영상 확대 비율 (클수록 양옆을 더 자르고 크게)
+BG_STYLE = env("BG_STYLE", "black")                   # black(검은 여백) | blur(흐린 배경)
+TITLE2_COLOR = env("TITLE2_COLOR", "pink")            # 상단 제목 2줄 색: pink | yellow | #RRGGBB
+NARR_COLOR = env("NARR_COLOR", "yellow")              # 나레이션 자막 색
 FONT = env("FONT", "Malgun Gothic")
 SUB_MARGIN_V = int(env("SUB_MARGIN_V", "470"))        # 자막 아래 여백(px). 틱톡 하단 UI 피하기
 NARR_ORIG_VOLUME = float(env("NARR_ORIG_VOLUME", "0.15"))  # 나레이션 중 원본 볼륨
+
+# --- 공정 이용 가이드라인 (법적 기준이 아닌 내부 안전 기준) ---
+NARR_RATIO_MIN = float(env("NARR_RATIO_MIN", "0.5"))      # 해설(나레이션) 비중 하한
+MAX_SOURCE_RATIO = float(env("MAX_SOURCE_RATIO", "0.10"))  # 원작 사용량 상한 (쓴 원본 길이 ÷ 원본 회차 전체 길이)
+MIN_ANALYSIS = int(env("MIN_ANALYSIS", "2"))               # 해석·비평·감상 나레이션 최소 개수

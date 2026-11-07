@@ -21,6 +21,21 @@ def narr_sec(text):
     return len(re.sub(r"\s", "", text or "")) / NARR_CPS
 
 
+def merge_fragments(segs, max_gap=0.7, max_chars=30):
+    """Whisper가 쉼표마다 자른 조각을 문장 단위로 합친다 (번역이 밀리거나 끊기는 것 방지)."""
+    out = []
+    for s in segs:
+        if out:
+            p = out[-1]
+            if (s["start"] - p["end"] <= max_gap and len(p["text"]) + len(s["text"]) <= max_chars
+                    and not re.search(r"[。！？!?…]$", p["text"])):
+                p["text"] = p["text"].rstrip("，,、 ") + "，" + s["text"]
+                p["end"] = s["end"]
+                continue
+        out.append(dict(s))
+    return out
+
+
 def load_lines(sources):
     tdir = config.WORK / "_transcripts"
     tdir.mkdir(parents=True, exist_ok=True)
@@ -28,7 +43,7 @@ def load_lines(sources):
     for si, src in enumerate(sources):
         p = Path(src)
         cache = tdir / f"{slugify(p.stem)}_{p.stat().st_size}.json"
-        segs = media.add_energy([dict(s) for s in media.transcribe(p, cache)], p)
+        segs = media.add_energy(merge_fragments(media.transcribe(p, cache)), p)
         for s in segs:
             lines.append({"id": f"L{len(lines) + 1}", "src": si, **s})
     return lines
@@ -70,29 +85,45 @@ PROMPT = """너는 중국 막장 드라마 숏폼(틱톡·네이버 클립) 해�
 {lines}
 
 ## 할 일
-위 대사에서 가장 막장스럽고 몰입되는 장면들을 골라 {min_s:.0f}~{max_s:.0f}초 분량의 세로 숏폼 한 편을 구성하라.
+{min_s:.0f}~{max_s:.0f}초 분량의 세로 숏폼 한 편을 구성하라.
 타임라인 항목 하나 = 원본 영상의 한 구간(from 대사 시작 ~ to 대사 끝).
 
-규칙:
-1. 항목 종류는 두 가지다.
-   - 나레이션 항목: narration에 해설을 쓴다. 원본 소리는 작게 깔리고 나레이션만 들린다. subs는 빈 객체.
-   - 원본 항목: narration은 빈 문자열. 원본 대사가 그대로 들리므로 subs에 그 구간 모든 대사ID의 한국어 번역을 넣는다.
-2. 첫 항목은 반드시 나레이션 훅, 마지막 항목은 반드시 나레이션(내 의견 + 댓글 유도 질문).
-3. 나레이션 항목의 길이 = 나레이션 글자수(공백 제외) ÷ {cps} + 0.5초. 화면은 from 지점부터 그 길이만큼 재생된다.
-   → from은 나레이션 내용과 어울리는 장면의 시작점으로 고른다.
-4. 전체 길이 {min_s:.0f}~{max_s:.0f}초, 그중 나레이션 항목이 40% 이상이어야 한다.
-   예) 나레이션 6개 × 평균 7초 = 42초 + 원본 5개 × 평균 7초 = 35초 → 77초
-5. 원본 항목 하나는 2~10초, 대사가 가장 강렬한 순간만 짧게 끊는다.
-6. from/to는 위 목록에 있는 대사ID만, 같은 소스(s번호) 안에서, from이 to보다 앞이어야 한다.
-7. 번역은 자연스러운 한국어 구어체로, 한 줄 20자 이내로 짧게 의역한다.
+### 이야기 구성 (가장 중요)
+시청자는 이 드라마를 처음 본다. 끝까지 보면 "누가, 무슨 일을 당했고, 어떻게 되는지"가 한 줄기 이야기로 이해돼야 한다.
+1. 먼저 대사 전체를 읽고 이 영상이 따라갈 **핵심 갈등 하나**를 정해 "story" 필드에 한 문장으로 적는다.
+   (쇼츠 포인트가 주어졌으면 그것을 우선한다.) 그 갈등과 상관없는 곁가지 장면은 넣지 않는다.
+2. 흐름: ①훅(가장 충격적인 사실 예고) → ②인물 관계와 상황 소개 → ③사건 전개 → ④반전·절정 → ⑤내 의견 + 질문
+3. 첫 항목(훅)을 뺀 나머지 항목은 **원본 시간 순서대로** 배치한다.
+4. 원본 항목 바로 앞의 나레이션은 그 장면을 이해하는 데 필요한 정보(누가 누구에게 왜)를 미리 알려준다.
+   원본 장면이 나레이션 내용을 직접 보여주게 연결한다.
+5. 나레이션 항목의 화면(from)은 나레이션이 말하는 내용과 같은 장면에서 고른다.
+
+### 해설 채널로서의 기준 (공정 이용)
+줄거리를 옮기는 영상이 아니라 **내 해석·비평·감상이 중심인 해설 영상**이어야 한다.
+- 나레이션 항목마다 role을 붙인다: "설명"(상황·관계 소개) 또는 "해석"(인물 속마음 추측, 전개·연출 평가,
+  현실이라면 어떨지, 시청자에게 던지는 질문 등 내 관점이 들어간 말).
+- "해석" 나레이션은 {min_analysis}개 이상. 원본 장면 직전에 질문을 던지고 장면 뒤에 내 해석으로 답하는 방식이 좋다.
+  예) "이 장면에서 아내는 왜 웃었을까요?" → (원본 장면) → "이미 증거를 다 쥐고 있었거든요."
+
+### 형식
+6. 항목 종류는 두 가지다.
+   - 나레이션 항목: narration에 해설. 원본 소리는 작게 깔리고 나레이션만 들린다.
+   - 원본 항목: narration은 빈 문자열. 원본 대사가 그대로 들린다. (한국어 번역은 다음 단계에서 따로 하니 쓰지 않는다)
+7. 첫 항목은 반드시 나레이션 훅, 마지막 항목은 반드시 나레이션(의견 + 댓글 유도 질문).
+8. 나레이션 항목의 길이 = 나레이션 글자수(공백 제외) ÷ {cps} + 0.5초. 화면은 from 지점부터 그 길이만큼 재생된다.
+9. 전체 길이 {min_s:.0f}~{max_s:.0f}초, 그중 나레이션 항목이 {narr_pct}% 이상.
+   예) 나레이션 6개 × 평균 7초 = 42초 + 원본 5개 × 평균 6초 = 30초 → 72초 (나레이션 58%)
+10. 원본 항목 하나는 2~10초. 대사가 완결되는 지점에서 끊는다(문장 중간에서 자르지 않기).
+11. from/to는 위 목록에 있는 대사ID만, 같은 소스(s번호) 안에서, from이 to보다 앞이어야 한다.
 
 JSON만 출력하라:
 {{
+ "story": "이 영상이 따라가는 핵심 갈등 한 문장",
  "title": "업로드 제목 (30자 이내, 궁금증 유발)",
  "overlay_title": ["영상 상단 고정 문구 1줄 (12자 이내)", "2줄 (12자 이내, 선택)"],
  "timeline": [
-  {{"src": 0, "from": "L12", "to": "L15", "narration": "나레이션 문장", "subs": {{}}}},
-  {{"src": 0, "from": "L40", "to": "L42", "narration": "", "subs": {{"L40": "번역", "L41": "번역", "L42": "번역"}}}}
+  {{"src": 0, "from": "L12", "to": "L15", "narration": "나레이션 문장", "role": "설명"}},
+  {{"src": 0, "from": "L40", "to": "L42", "narration": ""}}
  ],
  "opinion": "이 영상에서 말한 내 의견 한 줄 요약",
  "caption": "업로드 본문 (2~3문장, 마지막에 질문)",
@@ -141,7 +172,7 @@ def auto_fit(tl, by_id):
         return sum(x[0] for x in s), sum(x[1] for x in s)
 
     def bad(tot, nar):
-        return tot > config.TARGET_MAX_SEC or (tot and nar / tot < 0.4)
+        return tot > config.TARGET_MAX_SEC or (tot and nar / tot < config.NARR_RATIO_MIN)
 
     tot, nar = stats()
     if bad(tot, nar):
@@ -185,8 +216,6 @@ def make_validator(by_id):
             it["src"] = a["src"]
             narr = (it.get("narration") or "").strip()
             auto_trim(it, by_id, limit=20.0 if narr else 10.0)
-            if not narr and not it.get("subs"):
-                errs.append(f"{i}번 원본 항목에 subs(번역) 없음")
             sec, nsec = item_seconds(it, by_id)
             durs.append(f"{i}번 {sec:.1f}초{'(나레이션)' if narr else ''}")
             total += sec
@@ -195,6 +224,12 @@ def make_validator(by_id):
             errs.append("첫 항목은 나레이션 훅이어야 함")
         if not (tl[-1].get("narration") or "").strip():
             errs.append("마지막 항목은 나레이션(의견)이어야 함")
+        if not errs:
+            keys = [(by_id[it["from"]]["src"], by_id[it["from"]]["start"]) for it in tl[1:]]
+            back = [i + 2 for i in range(1, len(keys))
+                    if keys[i][0] < keys[i - 1][0] or (keys[i][0] == keys[i - 1][0] and keys[i][1] < keys[i - 1][1] - 1)]
+            if back:
+                errs.append(f"{', '.join(map(str, back))}번 항목이 앞 항목보다 이른 장면임 → 훅을 뺀 항목은 원본 시간 순서대로")
         if not errs:
             notes = auto_fit(tl, by_id)
             if notes:
@@ -205,11 +240,66 @@ def make_validator(by_id):
             if not (config.TARGET_MIN_SEC - 2 <= total <= config.MAX_SEC - 1):
                 errs.append(f"예상 길이 {total:.1f}초 → {config.TARGET_MIN_SEC:.0f}~{config.TARGET_MAX_SEC:.0f}초로 맞출 것 "
                             f"(나레이션은 초당 {NARR_CPS}자로 계산. 현재 항목별: {', '.join(durs)})")
-            if total and narr_total / total < 0.35:
-                errs.append(f"나레이션 비중 {narr_total / total:.0%} → 나레이션 항목을 늘리거나 길게 쓸 것")
+            if total and narr_total / total < config.NARR_RATIO_MIN - 0.05:
+                errs.append(f"나레이션 비중 {narr_total / total:.0%} → {config.NARR_RATIO_MIN:.0%} 이상이 되게 "
+                            f"나레이션 항목을 늘리거나 원본 항목을 줄일 것")
+            n_an = sum(1 for it in tl if (it.get("narration") or "").strip() and it.get("role") == "해석")
+            if n_an < config.MIN_ANALYSIS:
+                errs.append(f"'해석' 나레이션이 {n_an}개 → {config.MIN_ANALYSIS}개 이상 필요 "
+                            f"(인물 속마음 추측, 전개 평가, 질문 등 내 관점)")
         p["_est_total"], p["_est_narr"] = round(total, 1), round(narr_total, 1)
         return errs
     return validate
+
+
+TRANSLATE_PROMPT = """중국 드라마 대사를 한국어 자막으로 번역하라.
+드라마: {drama}
+{info}이 영상의 줄거리: {story}
+
+아래는 음성 인식으로 받아쓴 대사다(오타가 있을 수 있으니 문맥으로 바로잡아라).
+'▶' 표시가 붙은 대사만 번역한다. 표시 없는 대사는 앞뒤 문맥 참고용이다.
+
+{lines}
+
+규칙:
+- 대사ID 하나에 그 대사의 번역 하나. 다른 대사의 내용을 끌어오거나 순서를 섞지 않는다.
+- 자연스러운 한국어 구어체. 가능하면 18자 이내로 짧게 의역한다.
+- 인물 관계에 맞는 말투(부부·친구는 반말, 윗사람에게는 존댓말).
+- 인물 이름은 한국식 한자음 대신 관계나 호칭으로 바꿔도 된다(예: 老公 → 여보).
+
+JSON 객체만 출력: {{"L12": "번역", "L13": "번역"}}"""
+
+
+def translate(plan, by_id, engine, drama, info):
+    """원본 항목 대사만 앞뒤 문맥과 함께 따로 번역한다 (대사 하나 = 번역 하나)."""
+    want = []
+    for it in plan["timeline"]:
+        if not (it.get("narration") or "").strip():
+            want += [f"L{n}" for n in range(int(it["from"][1:]), int(it["to"][1:]) + 1) if f"L{n}" in by_id]
+    if not want:
+        return
+    ctx = set()
+    for lid in want:
+        n = int(lid[1:])
+        ctx |= {f"L{k}" for k in range(n - 3, n + 4) if f"L{k}" in by_id}
+    order = sorted(ctx, key=lambda x: int(x[1:]))
+    text = "\n".join(f"{'▶ ' if x in want else '  '}{x} {by_id[x]['text']}" for x in order)
+    prompt = TRANSLATE_PROMPT.format(drama=drama, info=info_text(info), story=plan.get("story", ""), lines=text)
+
+    def validate(d):
+        if not isinstance(d, dict):
+            return ["JSON 객체여야 함"]
+        miss = [x for x in want if not str(d.get(x) or "").strip()]
+        return [f"번역 빠짐: {', '.join(miss)}"] if miss else []
+
+    print(f"  · 대사 {len(want)}개 번역 (문맥 포함)")
+    subs, _ = llm.generate_json(prompt, engine=engine, validate=validate)
+    for it in plan["timeline"]:
+        if not (it.get("narration") or "").strip():
+            ids = [f"L{n}" for n in range(int(it["from"][1:]), int(it["to"][1:]) + 1)]
+            it["subs"] = {x: str(subs[x]).strip() for x in ids if x in subs}
+        else:
+            it["subs"] = {}
 
 
 def write_review(plan, by_id, path):
@@ -217,6 +307,10 @@ def write_review(plan, by_id, path):
          f"- 제목: **{plan.get('title', '')}**",
          f"- 상단 문구: {' / '.join(plan.get('overlay_title') or [])}",
          f"- 대본 작성: {plan['engine']}  |  예상 길이 {plan.get('_est_total')}초 (나레이션 {plan.get('_est_narr')}초)",
+         f"- 줄거리: {plan.get('story', '')}",
+         f"- 공정 이용 점검: 해설 비중 {plan.get('_est_narr', 0) / max(1, plan.get('_est_total') or 1):.0%} · "
+         f"'해석' 나레이션 {sum(1 for it in plan['timeline'] if it.get('role') == '해석')}개 · "
+         f"원작 사용 {plan.get('_source_ratio', 0):.1%} (원본 {plan.get('_source_total', 0) / 60:.0f}분 중)",
          f"- 의견: {plan.get('opinion', '')}", "", "## 타임라인", ""]
     t = 0.0
     for i, it in enumerate(plan["timeline"], 1):
@@ -257,6 +351,14 @@ def run(drama, videos, engine="auto", name=None, tts_engine=None, info=None):
     wdir = config.WORK / slugify(name or drama)
     wdir.mkdir(parents=True, exist_ok=True)
 
+    src_total = sum(media.duration(v) for v in videos)
+    allowed = src_total * config.MAX_SOURCE_RATIO
+    if allowed < config.TARGET_MIN_SEC:
+        need = config.TARGET_MIN_SEC / config.MAX_SOURCE_RATIO / 60
+        raise RuntimeError(f"원본이 {src_total / 60:.1f}분뿐이라 원작 사용 {config.MAX_SOURCE_RATIO:.0%} 기준"
+                           f"({allowed:.0f}초)으로는 1분 영상을 만들 수 없습니다. 회차를 더 넣어주세요 "
+                           f"(합계 {need:.0f}분 이상).")
+
     print(f"[1/3] 대사 추출 ({len(videos)}개 영상)")
     lines = load_lines(videos)
     if not lines:
@@ -273,9 +375,15 @@ def run(drama, videos, engine="auto", name=None, tts_engine=None, info=None):
                      for x in shown)
     style = (config.PROMPTS / "style.txt").read_text(encoding="utf-8")
     prompt = PROMPT.format(drama=drama, info=info_text(info), style=style, lines=text, cps=NARR_CPS,
-                           min_s=config.TARGET_MIN_SEC, max_s=config.TARGET_MAX_SEC)
+                           min_s=config.TARGET_MIN_SEC, max_s=config.TARGET_MAX_SEC,
+                           narr_pct=round(config.NARR_RATIO_MIN * 100), min_analysis=config.MIN_ANALYSIS)
     plan, used = llm.generate_json(prompt, engine=eng, validate=make_validator(by_id))
-    plan.update({"drama": drama, "engine": used, "sources": videos})
+    print(f"  · 줄거리: {plan.get('story', '')}")
+    translate(plan, by_id, used, drama, info)
+    plan.update({"drama": drama, "engine": used, "sources": videos, "_source_total": round(src_total, 1),
+                 "_source_ratio": round(plan["_est_total"] / src_total, 4),
+                 "credits": [{"ep": o["ep"], "channel": o["channel"], "url": o["url"]}
+                             for o in (info or {}).get("official", [])]})
 
     print("[3/3] 저장")
     (wdir / "plan.json").write_text(json.dumps(plan, ensure_ascii=False, indent=2), encoding="utf-8")
