@@ -155,7 +155,9 @@ class Jobs:
         for j, _ in reversed(self.jobs):
             log = Path(j["log"])
             tail = log.read_text(encoding="utf-8", errors="replace")[-3000:] if log.exists() else ""
-            tail = "\n".join(x for x in tail.splitlines() if "UserWarning" not in x and "warnings.warn" not in x)
+            noise = ("UserWarning", "warnings.warn", "mmco", "unref short", "[ WARN:", "Fontconfig", "h264 @",
+                     "Targets are not supported")
+            tail = "\n".join(x for x in tail.splitlines() if not any(n in x for n in noise))
             out.append({k: j[k] for k in ("id", "label", "target", "status", "created", "started", "ended")} |
                        {"log": tail})
         return out

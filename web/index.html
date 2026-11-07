@@ -184,7 +184,11 @@ textarea.field{resize:vertical;min-height:62px}
 .drawer.open{transform:none}
 .drawer .dh{display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border-bottom:1px solid var(--line)}
 .drawer .jobs{overflow:auto;padding:12px;display:flex;flex-direction:column;gap:10px}
-.job{border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.job{border:1px solid var(--line);border-radius:10px;overflow:hidden;flex:none}
+.job.running{border-color:var(--warn)}
+.job.running pre{max-height:50vh;min-height:120px;color:var(--text)}
+.job.failed pre{max-height:40vh;color:var(--text)}
+.job.done pre,.job.queued pre{max-height:110px}
 .job .jh{display:flex;justify-content:space-between;gap:8px;padding:8px 12px;background:var(--panel-2);font-size:14px;font-weight:600}
 .job pre{margin:0;padding:10px 12px;max-height:240px;overflow:auto;font-family:var(--mono);font-size:12px;white-space:pre-wrap;color:var(--muted)}
 .st{font-size:12px;font-weight:700}
@@ -790,7 +794,7 @@ async function pollJobs(now) {
     const lastLine = j => (j.log || "").trim().split("\n").pop().trim();
     $("#jobtext").textContent = run ? `${run.label}${lastLine(run) ? " — " + lastLine(run) : ""}` : active.length ? `대기 ${active.length}` : jobs[0] ? `최근: ${jobs[0].label} ${jobs[0].status === "failed" ? "실패" : "완료"}` : "작업 없음";
     const dur = j => { const s = Math.round(((j.ended || Date.now() / 1000) - j.started)); return j.started ? ` · ${Math.floor(s / 60)}분 ${String(s % 60).padStart(2, "0")}초` : ""; };
-    $("#jobs").innerHTML = jobs.map(j => `<div class="job"><div class="jh"><span>${esc(j.label)}</span>
+    $("#jobs").innerHTML = jobs.map(j => `<div class="job ${j.status}"><div class="jh"><span>${esc(j.label)}</span>
       <span class="st ${j.status}">${({queued: "대기", running: "진행 중", done: "완료", failed: "실패"})[j.status]}${dur(j)}</span></div>
       <pre>${esc(j.log || "")}</pre></div>`).join("") || `<div class="emptystate small">아직 실행한 작업이 없습니다.</div>`;
     document.querySelectorAll(".job pre").forEach(pre => pre.scrollTop = pre.scrollHeight);
