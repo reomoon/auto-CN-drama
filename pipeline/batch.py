@@ -50,8 +50,9 @@ def batch(do_render=False, engine="auto", tts_engine=None, only=None):
         print("input 폴더가 없습니다. `python main.py inbox` 로 만드세요.")
         return
     done, skipped, failed = [], [], []
+    exact = bool(only) and (INPUT / only).is_dir()
     for d in sorted(p for p in INPUT.iterdir() if p.is_dir()):
-        if only and only not in d.name:
+        if only and (d.name != only if exact else only not in d.name):
             continue
         wdir = config.WORK / plan.slugify(d.name)
         video = config.OUT / wdir.name / f"{wdir.name}.mp4"

@@ -1,5 +1,6 @@
 """중국 드라마 해설 숏폼 파이프라인
 
+  python main.py web [--lan]                    # 대시보드 http://127.0.0.1:8700
   python main.py doctor                         # 환경 점검
   python main.py voices                         # ElevenLabs 목소리 목록
   python main.py rank [--short] [--n 20]        # 인기 순위
@@ -26,6 +27,10 @@ LLM = ["auto", "claude", "gpt"]
 def main():
     ap = argparse.ArgumentParser(description="중국 드라마 해설 숏폼 파이프라인")
     sub = ap.add_subparsers(dest="cmd", required=True)
+
+    w = sub.add_parser("web", help="대시보드 (순위·미리보기·대본 수정)")
+    w.add_argument("--port", type=int, default=8700)
+    w.add_argument("--lan", action="store_true", help="같은 Wi-Fi의 폰에서 접속 허용")
 
     sub.add_parser("doctor", help="환경 점검")
     sub.add_parser("voices", help="ElevenLabs 목소리 목록")
@@ -58,7 +63,10 @@ def main():
     d.add_argument("--tts", choices=TTS)
 
     a = ap.parse_args()
-    if a.cmd == "doctor":
+    if a.cmd == "web":
+        from pipeline import web
+        web.run(port=a.port, lan=a.lan)
+    elif a.cmd == "doctor":
         batch.doctor()
     elif a.cmd == "voices":
         batch.voices()

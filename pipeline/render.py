@@ -111,7 +111,7 @@ def run(wdir, tts_engine=None):
     for old in rdir.glob("seg_*.mp4"):
         old.unlink()
 
-    events, segs, T = [], [], 0.0
+    events, segs, marks, T = [], [], [], 0.0
     tl = plan["timeline"]
     for i, it in enumerate(tl, 1):
         a, b = by_id[it["from"]], by_id[it["to"]]
@@ -135,6 +135,7 @@ def run(wdir, tts_engine=None):
         out = rdir / f"seg_{i:02d}.mp4"
         render_segment(src, info[src]["has_audio"], start, seg, str(mp3) if mp3 else None, str(out))
         segs.append(out.name)
+        marks.append([round(T, 2), round(seg, 2)])
 
         if narr:
             chunks = chunk_narration(narr)
@@ -185,6 +186,9 @@ def run(wdir, tts_engine=None):
             f"[네이버 클립 설명]\n{plan.get('title', '')}\n{plan.get('caption', '')}\n\n{tags}\n\n"
             f"[출처 표기]\n드라마: {plan['drama']}\n")
     (odir / "post.txt").write_text(post, encoding="utf-8")
+    (odir / "timeline.json").write_text(json.dumps(
+        {"duration": round(final_len, 2), "speed": round(speed, 4),
+         "items": [[round(s / speed, 2), round(d / speed, 2)] for s, d in marks]}), encoding="utf-8")
 
     if final_len < 60.5:
         print(f"  ! {final_len:.1f}초 — 틱톡 크리에이터 리워드는 1분 초과 영상만 해당됩니다.")
