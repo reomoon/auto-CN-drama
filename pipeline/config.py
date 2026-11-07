@@ -30,12 +30,32 @@ CODEX_EFFORT = env("CODEX_EFFORT", "medium")
 WHISPER_MODEL = env("WHISPER_MODEL", "large-v3")
 
 # --- TTS ---
-TTS_ENGINE = env("TTS_ENGINE", "elevenlabs")   # elevenlabs | edge(무료 미리보기용)
+TTS_ENGINE = env("TTS_ENGINE", "elevenlabs")   # elevenlabs | typecast | gemini | google | edge(무료) | auto
 ELEVEN_KEY = env("ELEVENLABS_API_KEY")
 ELEVEN_VOICE = env("ELEVENLABS_VOICE_ID")
 ELEVEN_MODEL = env("ELEVENLABS_MODEL", "eleven_v4")
 ELEVEN_SPEED = env("ELEVENLABS_SPEED")         # 0.7~1.2, 비우면 기본
 EDGE_VOICE = env("EDGE_VOICE", "ko-KR-InJoonNeural")
+# 아래 목소리 목록·설정은 auto-insta(youtube/build_youtube_video.py, youtube/gemini_tts.py)와 같다.
+# Typecast
+TYPECAST_KEY = env("TYPECAST_API_KEY")
+TYPECAST_VOICES = {"seohyun": ("서현", "tc_69f2e455ea79fd197aa0476f"),
+                   "hanyoung": ("한영", "tc_6731b3ac075b04a944644234"),
+                   "gangil": ("강일", "tc_68d4b115f0486108a7eefb37")}
+TYPECAST_VOICE = env("TYPECAST_VOICE", "gangil")                 # 위 목록의 키
+# Gemini
+GEMINI_KEY = env("GEMINI_API_KEY")
+GEMINI_TTS_MODEL = env("GEMINI_TTS_MODEL", "gemini-3.8-flash-tts")
+GEMINI_VOICES = {"female": ("여성 Kore", "Kore"), "male": ("남성 Charon", "Charon")}
+GEMINI_VOICE = env("GEMINI_VOICE", "male")
+GEMINI_STYLE = env("GEMINI_STYLE", "중국 드라마 해설 쇼츠 진행자, 또박또박한 합쇼체, 긴장감 있게 리듬감 있게, 조금 빠른 템포, 과장된 연기 없이")
+# Google Cloud TTS: (목소리 이름, pitch 세미톤)
+GOOGLE_TTS_KEY = env("GOOGLE_TTS_API_KEY")
+GOOGLE_TTS_VOICES = {"female": ("여성 Neural2-A", ("ko-KR-Neural2-A", -5.0)),
+                     "male": ("남성 Neural2-C", ("ko-KR-Neural2-C", 1.0))}
+GOOGLE_TTS_VOICE = env("GOOGLE_TTS_VOICE", "male")
+GOOGLE_TTS_RATE = 1.0
+NARRATION_SPEED = 1.05   # Typecast·Gemini 나레이션은 auto-insta 처럼 1.05배 빠르게 (음높이는 그대로)
 
 # --- 영상 ---
 MAX_SEC = float(env("MAX_SEC", "90"))

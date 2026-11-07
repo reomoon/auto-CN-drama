@@ -311,6 +311,8 @@ def index():
 @app.get("/api/config")
 def api_config():
     return jsonify({"eleven": bool(config.ELEVEN_KEY and config.ELEVEN_VOICE), "tts": config.TTS_ENGINE,
+                    "engines": {p: tts.available(p) for p in ("elevenlabs", "typecast", "gemini", "google")},
+                    "voices": tts.voices(), "default_voice": tts.DEFAULT_VOICE,
                     "min": config.TARGET_MIN_SEC, "max": config.MAX_SEC})
 
 
@@ -579,9 +581,15 @@ def api_job():
         job = JOBS.add(f"대본 만들기 · {name}", args, target=name, before=before)
     elif cmd == "render":
         name = _name(name)
-        t = b.get("tts") if b.get("tts") in ("elevenlabs", "edge") else "edge"
-        job = JOBS.add(f"{'렌더 영상 만들기' if t == 'elevenlabs' else '미리보기 렌더'} · {name}",
-                       ["render", str(config.WORK / name), "--tts", t], target=name)
+        t = b.get("tts") if b.get("tts") in tts.PROVIDERS + ("auto",) else "edge"
+        args = ["render", str(config.WORK / name), "--tts", t]
+        v = str(b.get("voice") or "")
+        if v and t in tts.VOICE_LISTS and v in tts.VOICE_LISTS[t]:
+            args += ["--voice", v]
+        names = {"elevenlabs": "ElevenLabs", "typecast": "Typecast", "gemini": "Gemini", "google": "Google",
+                 "auto": "자동"}
+        label = "미리보기 렌더" if t == "edge" else f"렌더 영상 만들기 ({names.get(t, t)})"
+        job = JOBS.add(f"{label} · {name}", args, target=name)
     else:
         abort(400, "알 수 없는 작업")
     return jsonify(job)

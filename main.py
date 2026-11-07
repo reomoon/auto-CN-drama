@@ -25,7 +25,7 @@ sys.stderr.reconfigure(encoding="utf-8")
 
 from pipeline import batch, plan, rank, render  # noqa: E402
 
-TTS = ["elevenlabs", "edge"]
+TTS = ["elevenlabs", "typecast", "gemini", "google", "edge", "auto"]
 LLM = ["auto", "claude", "gpt"]
 
 
@@ -95,6 +95,7 @@ def main():
     d = sub.add_parser("render", help="plan.json → 영상")
     d.add_argument("workdir")
     d.add_argument("--tts", choices=TTS)
+    d.add_argument("--voice", help="목소리 키 (typecast: seohyun|hanyoung|gangil, gemini·google: female|male)")
 
     a = ap.parse_args()
     if a.cmd == "web":
@@ -136,7 +137,7 @@ def main():
         from pipeline import cleanup
         cleanup.run(dry_run=a.dry_run)
     elif a.cmd == "render":
-        render.run(a.workdir, tts_engine=a.tts)
+        render.run(a.workdir, tts_engine=a.tts, voice=a.voice)
     elif a.cmd == "make":
         render.run(plan.run(a.drama, a.videos, engine=a.llm, name=a.name, tts_engine=a.tts), tts_engine=a.tts)
 

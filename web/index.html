@@ -428,10 +428,15 @@ function renderDetail(it) {
     <div class="step ${it.video ? "done" : ""}"><div class="n">3</div><div class="body">
       <b>렌더 영상 만들기</b>
       <div class="acts">
-        <button class="btn" id="btn-prev" ${busy || !p ? "disabled" : ""}>미리보기 (무료 음성)</button>
-        <button class="btn primary" id="btn-final" ${busy || !p || !cfg.eleven ? "disabled" : ""}>렌더 영상 만들기</button>
+        <select id="tts-engine">${ENGINES.map(([k, n]) => `<option value="${k}" ${(cfg.engines || {})[k] === false ? "disabled" : ""}>${n}${(cfg.engines || {})[k] === false ? " (키 없음)" : ""}</option>`).join("")}
+          <option value="auto">자동 (되는 엔진 순서대로)</option></select>
+        <select id="tts-voice"></select>
       </div>
-      <span class="muted small">‘렌더 영상 만들기’는 ElevenLabs 목소리로 올릴 영상을 만듭니다 (1~2분). 미리보기는 크레딧 없이 흐름만 확인합니다.</span>
+      <div class="acts">
+        <button class="btn" id="btn-prev" ${busy || !p ? "disabled" : ""}>미리보기 (무료 음성)</button>
+        <button class="btn primary" id="btn-final" ${busy || !p ? "disabled" : ""}>렌더 영상 만들기</button>
+      </div>
+      <span class="muted small">‘렌더 영상 만들기’는 고른 목소리로 올릴 영상을 만듭니다 (1~2분). 목소리 목록은 auto-insta와 같고, ElevenLabs는 .env 설정 그대로입니다. 미리보기는 크레딧 없이 흐름만 확인합니다.</span>
       ${cfg.eleven ? "" : `<span class="muted small">‘렌더 영상 만들기’는 .env에 ElevenLabs 키와 Voice ID를 넣으면 켜집니다.</span>`}
     </div></div>`;
   const tags = p ? p.hashtags.join(" ") : "";
@@ -516,8 +521,21 @@ function renderDetail(it) {
     if (p && !confirm("지금 대본을 버리고 새로 만들까요? (이전 대본은 plan_prev.json으로 보관)")) return;
     job({cmd: p ? "replan" : "plan", name: it.name, llm: $("#llm").value});
   };
+  const engSel = $("#tts-engine"), voiceSel = $("#tts-voice");
+  const fillVoices = () => {
+    const list = (cfg.voices || {})[engSel.value] || [];
+    voiceSel.hidden = !list.length;
+    let saved = null; try { saved = localStorage.getItem("voice:" + engSel.value); } catch {}
+    const def = saved || (cfg.default_voice || {})[engSel.value];
+    voiceSel.innerHTML = list.map(([k, n]) => `<option value="${k}" ${k === def ? "selected" : ""}>${esc(n)}</option>`).join("");
+  };
+  try { const e = localStorage.getItem("tts-engine"); if (e && [...engSel.options].some(o => o.value === e && !o.disabled)) engSel.value = e; } catch {}
+  if (engSel.selectedOptions[0]?.disabled) engSel.value = "auto";
+  fillVoices();
+  engSel.onchange = () => { try { localStorage.setItem("tts-engine", engSel.value); } catch {} fillVoices(); };
+  voiceSel.onchange = () => { try { localStorage.setItem("voice:" + engSel.value, voiceSel.value); } catch {} };
   $("#btn-prev").onclick = () => renderJob(it.name, "edge");
-  $("#btn-final").onclick = () => renderJob(it.name, "elevenlabs");
+  $("#btn-final").onclick = () => renderJob(it.name, engSel.value, voiceSel.hidden ? "" : voiceSel.value);
   document.querySelectorAll("[data-copy]").forEach(b => b.onclick = () =>
     copy(b.dataset.copy === "title" ? p.title : `${p.caption}\n\n${tags}`));
   document.querySelectorAll("[data-up]").forEach(b => b.onclick = () => {
@@ -550,9 +568,10 @@ function researchHTML(it) {
       <button class="btn ghost small" id="btn-research" ${it.busy ? "disabled" : ""}>지금 조사</button></summary>${body}</details>`;
 }
 
-async function renderJob(name, tts) {
+const ENGINES = [["elevenlabs", "ElevenLabs (지금 설정)"], ["typecast", "Typecast"], ["gemini", "Gemini"], ["google", "Google"]];
+async function renderJob(name, tts, voice = "") {
   if (state.dirty && !confirm("저장하지 않은 수정이 있습니다. 저장하지 않고 렌더할까요?")) return;
-  job({cmd: "render", name, tts});
+  job({cmd: "render", name, tts, voice});
 }
 
 async function uploadFiles(name, files) {

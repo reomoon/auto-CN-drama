@@ -298,8 +298,13 @@ def render_segment(src, has_audio, start, seg, narr_mp3, out, lay, ramp_in=False
                   "-c:a", "aac", "-b:a", "192k", "-ar", "48000", out])
 
 
-def run(wdir, tts_engine=None):
+def run(wdir, tts_engine=None, voice=None):
     wdir = Path(wdir)
+    engine = (tts_engine or config.TTS_ENGINE or "auto").lower()
+    if voice:
+        tts.set_voice(engine, voice)
+    shown = tts.voice_key(engine) if engine in tts.VOICE_LISTS else ""
+    print(f"  · 나레이션: {engine}{' / ' + tts.VOICE_LISTS[engine][shown][0] if shown else ''}", flush=True)
     plan = json.loads((wdir / "plan.json").read_text(encoding="utf-8"))
     by_id = {x["id"]: x for x in json.loads((wdir / "lines.json").read_text(encoding="utf-8"))}
     sources = plan["sources"]
