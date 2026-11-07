@@ -41,7 +41,8 @@ def transcript(src):
     p = Path(src)
     tdir = config.WORK / "_transcripts"
     tdir.mkdir(parents=True, exist_ok=True)
-    return merge_fragments(media.transcribe(p, tdir / f"{slugify(p.stem)}_{p.stat().st_size}.json"))
+    # _v2: 반복·지어낸 문장을 막는 설정으로 다시 인식한 결과
+    return merge_fragments(media.transcribe(p, tdir / f"{slugify(p.stem)}_{p.stat().st_size}_v2.json"))
 
 
 def load_lines(sources, windows=None):
@@ -206,17 +207,26 @@ def auto_fit(tl, by_id):
             if not _is_narr(it) and auto_trim(it, by_id, 7.0):
                 notes.append(f"원본 클립 {it['from']}~{it['to']}로 축소")
         tot, nar = stats()
+    orig_floor = (1 - config.NARR_RATIO_MAX) - 0.03          # 원본 구간을 이 아래(약 17%)로는 빼지 않는다
     while bad(tot, nar):
         cands = [it for it in tl[1:-1] if not _is_narr(it)]
         if not cands:
             break
         worst = min(cands, key=lambda it: _energy(it, by_id))
-        if tot - item_seconds(worst, by_id)[0] < config.TARGET_MIN_SEC:
+        sec = item_seconds(worst, by_id)[0]
+        if tot - sec < config.TARGET_MIN_SEC:
             break
+        if tot - sec > 0 and (tot - sec - nar) / (tot - sec) < orig_floor:
+            break                                             # 더 빼면 원본이 너무 적어짐 → 나레이션을 줄이게 한다
         tl.remove(worst)
         notes.append(f"원본 클립 {worst['from']}~{worst['to']} 제외")
         tot, nar = stats()
     return notes
+
+
+def _too_few_lines(by_id):
+    """대사가 아주 적은 구간(음악·무대사 장면이 많음)이면 원본 대사 비중 기준을 강제하지 않는다."""
+    return len(by_id) < 40
 
 
 def make_validator(by_id):
@@ -265,13 +275,18 @@ def make_validator(by_id):
             s = [item_seconds(it, by_id) for it in tl]
             total, narr_total = sum(x[0] for x in s), sum(x[1] for x in s)
             durs = [f"{i}번 {x[0]:.1f}초{'(나레이션)' if x[1] else ''}" for i, x in enumerate(s, 1)]
-            if not (config.TARGET_MIN_SEC - 2 <= total <= config.MAX_SEC - 1):
-                errs.append(f"예상 길이 {total:.1f}초 → {config.TARGET_MIN_SEC:.0f}~{config.TARGET_MAX_SEC:.0f}초로 맞출 것 "
-                            f"(나레이션은 초당 {NARR_CPS}자로 계산. 현재 항목별: {', '.join(durs)})")
+            if total > config.MAX_SEC - 1:
+                over = total - config.TARGET_MAX_SEC
+                errs.append(f"예상 길이 {total:.1f}초로 {over:.0f}초 깁니다 → 원본 항목은 그대로 두고 나레이션을 줄일 것 "
+                            f"(나레이션 항목을 1~2개 빼거나 문장을 짧게, 나레이션은 초당 {NARR_CPS}자로 계산. "
+                            f"현재 항목별: {', '.join(durs)})")
+            elif total < config.TARGET_MIN_SEC - 2:
+                errs.append(f"예상 길이 {total:.1f}초 → {config.TARGET_MIN_SEC:.0f}~{config.TARGET_MAX_SEC:.0f}초로 늘릴 것 "
+                            f"(현재 항목별: {', '.join(durs)})")
             if total and narr_total / total < config.NARR_RATIO_MIN - 0.05:
                 errs.append(f"원본 항목 비중 {1 - narr_total / total:.0%} → {1 - config.NARR_RATIO_MIN:.0%} 이하가 되게 "
                             f"원본 항목을 줄이거나 나레이션 항목을 늘릴 것")
-            if total and narr_total / total > config.NARR_RATIO_MAX + 0.05:
+            if total and narr_total / total > config.NARR_RATIO_MAX + 0.05 and not _too_few_lines(by_id):
                 errs.append(f"원본 항목 비중 {1 - narr_total / total:.0%} → {1 - config.NARR_RATIO_MAX:.0%} 이상이 되게 "
                             f"강렬한 원본 대사 장면을 2~4개 넣을 것")
             n_an = sum(1 for it in tl if (it.get("narration") or "").strip() and it.get("role") == "해석")

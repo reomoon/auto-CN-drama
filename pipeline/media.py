@@ -1,6 +1,7 @@
 """ffmpeg/ffprobe 헬퍼, 음성 인식, 음량 분석."""
 import json
 import os
+import re
 import site
 import subprocess
 from pathlib import Path
@@ -64,7 +65,9 @@ def transcribe(src, cache):
     if cache.exists():
         return json.loads(cache.read_text(encoding="utf-8"))
     print(f"  · 음성 인식: {Path(src).name} (처음 한 번만, 회차당 2~5분)", flush=True)
+    # condition_on_previous_text=False: 한 번 지어낸 문장(예: '中文字幕志愿者')을 계속 반복하는 것을 막는다
     segs, info = _load_model().transcribe(str(src), language="zh", vad_filter=True, beam_size=5,
+                                          condition_on_previous_text=False,
                                           initial_prompt="以下是普通话的句子。")
     total = getattr(info, "duration", 0) or duration(src)
     out, shown = [], 0
@@ -77,9 +80,30 @@ def transcribe(src, cache):
             shown = pct // 10 * 10
             print(f"    음성 인식 {shown}% ({int(s.end // 60)}:{int(s.end % 60):02d} / "
                   f"{int(total // 60)}:{int(total % 60):02d}) · 대사 {len(out)}개", flush=True)
+    before = len(out)
+    out = drop_hallucinations(out)
     cache.write_text(json.dumps(out, ensure_ascii=False, indent=1), encoding="utf-8")
-    print(f"    {len(out)}개 대사")
+    print(f"    {len(out)}개 대사" + (f" (지어낸 문장·반복 {before - len(out)}개 제외)" if before - len(out) else ""))
     return out
+
+
+# Whisper 가 음악·무음 구간에서 지어내는 흔한 문구
+HALLUCINATIONS = re.compile(r"字幕志愿者|字幕由|字幕提供|字幕组|请不吝点赞|点赞订阅|订阅|转发|打赏|明镜与点点|"
+                            r"感谢观看|謝謝觀看|谢谢大家|优优独播剧场|YoYo Television|Amara\.org|本节目")
+
+
+def drop_hallucinations(segs):
+    """지어낸 문구와, 같은 문장이 3번 이상 연달아 나오는 반복을 뺀다."""
+    out = [s for s in segs if not HALLUCINATIONS.search(s["text"])]
+    cleaned, run = [], []
+    for s in out + [None]:
+        if s is not None and run and s["text"] == run[-1]["text"]:
+            run.append(s)
+            continue
+        if len(run) < 3:
+            cleaned += run
+        run = [s] if s is not None else []
+    return cleaned
 
 
 # ---------------- 본편 구간 (오프닝·엔딩 크레딧 제외) ----------------
