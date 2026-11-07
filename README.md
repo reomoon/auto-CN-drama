@@ -24,6 +24,26 @@ copy .env.example .env   # ElevenLabs 키와 Voice ID 입력
 
 ## 사용법
 
+### 매일 돌리는 흐름 (추천)
+
+```powershell
+.\.venv\Scripts\python main.py doctor           # 환경 점검 (CLI 로그인, GPU, ElevenLabs 잔여 글자)
+.\.venv\Scripts\python main.py voices           # ElevenLabs 목소리 목록 → .env 에 Voice ID 입력
+
+.\.venv\Scripts\python main.py rank --short     # 1) 인기 순위 수집
+.\.venv\Scripts\python main.py inbox --short    # 2) input\S01_드라마명\ ... 폴더 생성
+#    → 원하는 폴더에 회차 영상 1~3개를 넣는다 (1화.mp4, 2화.mp4 ...)
+.\.venv\Scripts\python main.py batch            # 3) 영상이 들어온 폴더만 대본 생성 → work\<폴더>\plan.md 확인
+.\.venv\Scripts\python main.py batch --render   # 4) 대본이 있고 아직 영상이 없는 폴더만 렌더 → out\<폴더>\
+```
+
+- 폴더 하나가 숏폼 한 편입니다. 이미 대본이나 완성본이 있는 폴더는 건너뜁니다.
+- 순위 정보(원제, 플랫폼, 쇼츠 포인트)는 `info.json`에 저장되어 대본 작성에 참고 자료로 들어갑니다.
+- 한 편이 실패해도 나머지는 계속 진행하고, 마지막에 결과를 요약합니다.
+- 숏드라마는 `S`, 장편은 `D`로 폴더 이름이 시작합니다.
+
+### 개별 실행
+
 ```powershell
 # 1) 인기 순위
 .\.venv\Scripts\python main.py rank            # 장편 드라마

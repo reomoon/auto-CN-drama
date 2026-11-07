@@ -61,7 +61,7 @@ def item_seconds(item, by_id):
 
 PROMPT = """너는 중국 막장 드라마 숏폼(틱톡·네이버 클립) 해설 채널의 작가다.
 드라마: {drama}
-드라마에 대해 아는 정보는 활용하되, 아래 대사와 어긋나면 대사를 따른다.
+{info}드라마에 대해 아는 정보는 활용하되, 아래 대사와 어긋나면 대사를 따른다.
 
 {style}
 
@@ -241,7 +241,15 @@ def write_review(plan, by_id, path):
     Path(path).write_text("\n".join(L), encoding="utf-8")
 
 
-def run(drama, videos, engine="auto", name=None, tts_engine=None):
+def info_text(info):
+    if not info:
+        return ""
+    rows = [("원제", info.get("title_zh")), ("플랫폼", info.get("platform")), ("장르", info.get("genre")),
+            ("쇼츠 포인트", info.get("hook"))]
+    return "".join(f"{k}: {v}\n" for k, v in rows if v)
+
+
+def run(drama, videos, engine="auto", name=None, tts_engine=None, info=None):
     videos = [str(Path(v).resolve()) for v in videos]
     for v in videos:
         if not Path(v).exists():
@@ -264,7 +272,7 @@ def run(drama, videos, engine="auto", name=None, tts_engine=None):
     text = "\n".join(f"{x['id']} [s{x['src']} {fmt(x['start'])}-{fmt(x['end'])} ⚡{x['energy']}] {x['text']}"
                      for x in shown)
     style = (config.PROMPTS / "style.txt").read_text(encoding="utf-8")
-    prompt = PROMPT.format(drama=drama, style=style, lines=text, cps=NARR_CPS,
+    prompt = PROMPT.format(drama=drama, info=info_text(info), style=style, lines=text, cps=NARR_CPS,
                            min_s=config.TARGET_MIN_SEC, max_s=config.TARGET_MAX_SEC)
     plan, used = llm.generate_json(prompt, engine=eng, validate=make_validator(by_id))
     plan.update({"drama": drama, "engine": used, "sources": videos})
