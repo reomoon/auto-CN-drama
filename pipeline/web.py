@@ -446,8 +446,12 @@ def api_job():
                 if (w / "plan.json").exists():
                     (w / "plan.json").replace(w / "plan_prev.json")
         ser = (_read(config.WORK / name / "plan.json") or {}).get("series")
-        args = (["series", ser["base"], "--part", str(ser["part"]), "--llm", llm] if ser
-                else ["batch", "--only", name, "--llm", llm])
+        if ser:
+            args = ["series", ser["base"], "--part", str(ser["part"]), "--llm", llm]
+        elif (INPUT / name).is_dir():   # 새 작품도 시리즈 1편으로 (마지막에 다음 편 예고)
+            args = ["series", name, "--part", "1", "--llm", llm]
+        else:
+            args = ["batch", "--only", name, "--llm", llm]
         job = JOBS.add(f"대본 만들기 · {name}", args, target=name, before=before)
     elif cmd == "render":
         name = _name(name)
