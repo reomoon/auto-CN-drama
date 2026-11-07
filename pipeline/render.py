@@ -134,9 +134,9 @@ def build_ass(events, overlay, total, path, lay=None, label=None):
             f"Style: Title1,{f},136,{t1},{t1},&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,5,0,2,20,20,0,1\n"
             f"Style: Title2,{f},136,{t2},{t2},&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,5,0,2,20,20,0,1\n"
             f"Style: Label,{f},50,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,3,0,1,44,44,0,1\n"
-            f"Style: Narr,{f},92,{narr_c},{narr_c},&H00000000,&H64000000,0,0,0,0,100,100,0,0,1,9,3,2,130,130,{narr_v},1\n"
-            f"Style: Dialog,{f},62,&H00FFFFFF,&H00FFFFFF,&H00000000,&H78000000,0,0,0,0,100,100,0,0,1,5,2,2,60,60,{dlg_v},1\n")
-        wrap_w = {"Narr": 9, "Dialog": 18}
+            f"Style: Narr,{f},{config.NARR_FONT_SIZE},{narr_c},{narr_c},&H00000000,&H64000000,0,0,0,0,100,100,0,0,1,10,3,2,70,70,{narr_v},1\n"
+            f"Style: Dialog,{f},{config.DIALOG_FONT_SIZE},&H00FFFFFF,&H00FFFFFF,&H00000000,&H78000000,0,0,0,0,100,100,0,0,1,6,2,2,50,50,{dlg_v},1\n")
+        wrap_w = {"Narr": 9, "Dialog": 13}
         base = 136
     else:
         f = config.FONT
@@ -145,9 +145,9 @@ def build_ass(events, overlay, total, path, lay=None, label=None):
             f"Style: Title1,{f},96,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,-1,0,0,0,100,100,-2,0,1,6,0,2,40,40,0,1\n"
             f"Style: Title2,{f},96,{t2_c},{t2_c},&H00000000,&H00000000,-1,0,0,0,100,100,-2,0,1,6,0,2,40,40,0,1\n"
             f"Style: Label,{f},48,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,3,0,1,60,60,0,1\n"
-            f"Style: Narr,{f},66,{narr_c},{narr_c},&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,5,0,{lay['narr_align']},90,90,{narr_v},1\n"
-            f"Style: Dialog,{f},60,&H00FFFFFF,&H00FFFFFF,&H00000000,&HA0000000,-1,0,0,0,100,100,0,0,1,4,2,2,90,90,{dlg_v},1\n")
-        wrap_w = {"Narr": 13, "Dialog": 13}
+            f"Style: Narr,{f},76,{narr_c},{narr_c},&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,6,0,{lay['narr_align']},70,70,{narr_v},1\n"
+            f"Style: Dialog,{f},70,&H00FFFFFF,&H00FFFFFF,&H00000000,&HA0000000,-1,0,0,0,100,100,0,0,1,5,2,2,70,70,{dlg_v},1\n")
+        wrap_w = {"Narr": 12, "Dialog": 13}
         base = 96
     head = ("[Script Info]\nScriptType: v4.00+\nPlayResX: 1080\nPlayResY: 1920\nWrapStyle: 2\n"
             "ScaledBorderAndShadow: yes\n\n[V4+ Styles]\n"
@@ -335,7 +335,14 @@ def run(wdir, tts_engine=None, voice=None):
             mp3 = tts.synth(narr, wdir / "tts", engine=tts_engine)
             nd = media.duration(mp3)
             tts.record(narr, nd, engine=tts_engine)
-        if i == 1 and narr:
+        ct = plan.get("cover_time") if i == 1 and narr else None
+        if ct and 0 <= int(ct.get("src", 0)) < len(sources):
+            # 대시보드에서 직접 고른 썸네일 장면
+            src = sources[int(ct["src"])]
+            sdur = info[src]["duration"]
+            start = max(0.0, float(ct["t"]) - 0.05)
+            print(f"  · 썸네일(첫 화면): {int(start // 60)}:{start % 60:04.1f} (직접 고른 장면)")
+        elif i == 1 and narr:
             # 첫 화면 = 썸네일: 대본이 고른 가장 자극적인 장면(cover) 근처에서 얼굴이 크고 선명한 순간부터 시작
             cv = by_id.get(plan.get("cover") or "")
             picked_by_plan = bool(cv)

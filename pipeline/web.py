@@ -459,6 +459,86 @@ def api_plan_save(name):
     return jsonify(plan_view(name))
 
 
+# ---------------- 썸네일(첫 화면) 고르기 ----------------
+def _frame_jpg(name, src_idx, t):
+    """원본 회차의 t초 프레임을 작은 jpg 로 (work/<편>/covers 에 캐시)."""
+    p = _read(config.WORK / name / "plan.json")
+    if not p or not (0 <= src_idx < len(p["sources"])):
+        abort(404)
+    t = round(max(0.0, t) * 5) / 5            # 0.2초 단위
+    d = config.WORK / name / "covers"
+    d.mkdir(parents=True, exist_ok=True)
+    out = d / f"{src_idx}_{t:.1f}.jpg"
+    if not out.exists():
+        subprocess.run(["ffmpeg", "-y", "-v", "error", "-ss", f"{t:.2f}", "-i", p["sources"][src_idx],
+                        "-frames:v", "1", "-vf", "scale=640:-2", "-q:v", "4", str(out)], check=False)
+    if not out.exists():
+        abort(404)
+    return out, t
+
+
+@app.get("/api/covers/<name>")
+def api_covers(name):
+    """후보 8장: 이번 편 대사 중 가장 격한 장면들 → 그 근처에서 얼굴이 크고 선명한 프레임."""
+    name = _name(name)
+    w = config.WORK / name
+    p, lines = _read(w / "plan.json"), _read(w / "lines.json")
+    if not p or not lines:
+        abort(404)
+    from .render import pick_cover
+    cache = w / "covers" / "candidates.json"
+    cands = _read(cache)
+    if not cands:
+        picks = []
+        cover = next((x for x in lines if x["id"] == p.get("cover")), None)
+        for ln in ([cover] if cover else []) + sorted(lines, key=lambda x: -x.get("energy", 0)):
+            if len(picks) >= 8:
+                break
+            if any(q["src"] == ln["src"] and abs(q["start"] - ln["start"]) < 25 for q in picks):
+                continue
+            picks.append(ln)
+        cands = []
+        for ln in sorted(picks, key=lambda x: (x["src"], x["start"])):
+            src = p["sources"][ln["src"]]
+            t = pick_cover(src, max(0.0, ln["start"] - 1.0), ln["end"] + 2.0, step=0.5)
+            cands.append({"src": ln["src"], "t": round(t, 1), "text": ln["text"][:30],
+                          "by_plan": bool(cover and ln["id"] == cover["id"])})
+        cache.parent.mkdir(parents=True, exist_ok=True)
+        cache.write_text(json.dumps(cands, ensure_ascii=False), encoding="utf-8")
+    rng = {}
+    for x in lines:
+        a = rng.setdefault(x["src"], [x["start"], x["end"]])
+        a[0], a[1] = min(a[0], x["start"]), max(a[1], x["end"])
+    return jsonify({"candidates": cands, "current": p.get("cover_time"), "range": rng})
+
+
+@app.get("/frame/<name>")
+def frame(name):
+    out, _ = _frame_jpg(_name(name), int(request.args.get("src", 0)), float(request.args.get("t", 0)))
+    r = send_file(out, mimetype="image/jpeg")
+    r.headers["Cache-Control"] = "private, max-age=86400"
+    return r
+
+
+@app.post("/api/cover/<name>")
+def api_cover_save(name):
+    name = _name(name)
+    w = config.WORK / name
+    p = _read(w / "plan.json")
+    if not p:
+        abort(404)
+    b = request.get_json(force=True) or {}
+    if b.get("clear"):
+        p.pop("cover_time", None)
+    else:
+        src, t = int(b.get("src", 0)), float(b.get("t", 0))
+        if not (0 <= src < len(p["sources"])):
+            abort(400)
+        p["cover_time"] = {"src": src, "t": round(t, 2)}
+    (w / "plan.json").write_text(json.dumps(p, ensure_ascii=False, indent=2), encoding="utf-8")
+    return jsonify({"current": p.get("cover_time")})
+
+
 @app.post("/api/status/<name>")
 def api_status(name):
     name = _name(name)

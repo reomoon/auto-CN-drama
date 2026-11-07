@@ -85,6 +85,16 @@ main{max-width:1280px;margin:0 auto;padding:24px}
 .fair .pill.ok{background:var(--ok-soft);color:var(--ok)}
 .fair .pill.bad{background:var(--danger-soft);color:var(--danger)}
 .story{padding:10px 16px;border-bottom:1px solid var(--line);font-size:14px}
+.cgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin-top:4px}
+.cand{border:2px solid transparent;border-radius:12px;padding:0;overflow:hidden;background:var(--panel-2);cursor:pointer;
+  display:flex;flex-direction:column;text-align:left}
+.cand img{width:100%;aspect-ratio:16/9;object-fit:cover;display:block;background:#111}
+.cand span{font-size:12px;padding:4px 8px;color:var(--muted)}
+.cand.on{border-color:var(--accent-ink)}
+.cpick{display:grid;grid-template-columns:minmax(0,360px) 1fr;gap:16px;margin-top:14px;align-items:start}
+.cpick .body{display:flex;flex-direction:column;gap:8px}
+#cprev{width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:12px;background:#111}
+@media (max-width:900px){.cpick{grid-template-columns:1fr}}
 .research summary{cursor:pointer;display:flex;gap:10px;align-items:center;flex-wrap:wrap;list-style:none}
 .research summary::-webkit-details-marker{display:none}
 .research summary button{margin-left:auto}
@@ -472,6 +482,7 @@ function renderDetail(it) {
       <div class="phone">${player}</div>
       <div class="side"><div class="card box"><h4>진행</h4>${steps}</div>${upload}</div>
     </div>
+    ${p ? coverHTML() : ""}
     ${researchHTML(it)}
     ${p ? timelineHTML() : ""}`;
 
@@ -502,6 +513,7 @@ function renderDetail(it) {
   };
   if ($("#btn-next")) $("#btn-next").onclick = () => job({cmd: "series", name: it.base, llm: $("#llm").value});
   if ($("#btn-research")) $("#btn-research").onclick = e => { e.preventDefault(); job({cmd: "research", name: it.base || it.name}); };
+  bindCovers(it);
   const pickedParts = new Set();
   document.querySelectorAll("[data-part]").forEach(b => b.onclick = () => {
     const n = +b.dataset.part;
@@ -550,6 +562,66 @@ function renderDetail(it) {
     loadItems(); loadRank(); select(it.name, true);
   });
   if (p) bindTimeline(it);
+}
+
+function coverHTML() {
+  return `<div class="card box" id="coverbox"><h4>썸네일(첫 화면) 고르기
+      <button class="btn ghost small" id="btn-covers">후보 불러오기</button></h4>
+    <div id="coverbody" class="muted small">틱톡·클립은 영상 첫 화면이 썸네일이 됩니다. 후보 8장을 불러와 고르거나, 슬라이더로 원하는 장면을 찾으세요.
+      (처음 불러올 때 10~20초 걸립니다)</div></div>`;
+}
+
+function bindCovers(it) {
+  const btn = $("#btn-covers"); if (!btn) return;
+  const name = encodeURIComponent(it.name);
+  const frameUrl = (src, t) => `/frame/${name}?src=${src}&t=${(+t).toFixed(1)}`;
+  btn.onclick = async () => {
+    btn.disabled = true; btn.textContent = "불러오는 중…";
+    let d;
+    try { d = await api(`/api/covers/${name}`); } catch (e) { toast(e.message); btn.disabled = false; btn.textContent = "후보 불러오기"; return; }
+    btn.hidden = true;
+    let cur = d.current;
+    const sel = cur ? {...cur} : {...(d.candidates.find(c => c.by_plan) || d.candidates[0] || {src: 0, t: 0})};
+    const rng = r => d.range[r] || d.range[String(r)] || [0, 0];
+    $("#coverbody").className = "";
+    $("#coverbody").innerHTML = `
+      <div class="cgrid">${d.candidates.map((c, i) => `<button class="cand" data-i="${i}">
+        <img loading="lazy" src="${frameUrl(c.src, c.t)}" alt="">
+        <span>${fmt(c.t)}${c.by_plan ? " · 대본 추천" : ""}</span></button>`).join("")}</div>
+      <div class="cpick"><img id="cprev" alt="">
+        <div class="body">
+          <div class="small"><b id="ctime"></b> <span class="muted" id="cstate"></span></div>
+          <input type="range" id="cslider" step="0.2" style="width:100%">
+          <div class="muted small">슬라이더로 0.2초 단위로 옮겨 보세요. 실제 영상에서는 얼굴 위치에 맞춰 양옆이 잘립니다.</div>
+          <div class="acts"><button class="btn primary" id="btn-cover-save">이 장면으로 정하기</button>
+            <button class="btn ghost" id="btn-cover-clear" ${cur ? "" : "disabled"}>자동으로 되돌리기</button></div>
+        </div></div>`;
+    const slider = $("#cslider"), prev = $("#cprev");
+    let timer;
+    const show = () => {
+      const [a, b] = rng(sel.src);
+      slider.min = a.toFixed(1); slider.max = b.toFixed(1); slider.value = sel.t;
+      $("#ctime").textContent = `${sel.src + 1}번째 영상 ${fmt(sel.t)}`;
+      $("#cstate").textContent = cur && cur.src === sel.src && Math.abs(cur.t - sel.t) < 0.15 ? "· 지금 정해진 장면" : "";
+      clearTimeout(timer); timer = setTimeout(() => prev.src = frameUrl(sel.src, sel.t), 200);
+      document.querySelectorAll(".cand").forEach(el => {
+        const c = d.candidates[+el.dataset.i];
+        el.classList.toggle("on", c.src === sel.src && Math.abs(c.t - sel.t) < 0.15);
+      });
+    };
+    document.querySelectorAll(".cand").forEach(el => el.onclick = () => { const c = d.candidates[+el.dataset.i]; sel.src = c.src; sel.t = c.t; show(); });
+    slider.oninput = () => { sel.t = +slider.value; show(); };
+    $("#btn-cover-save").onclick = async () => {
+      await api(`/api/cover/${name}`, {method: "POST", body: sel});
+      toast("썸네일 장면을 정했습니다 — ‘렌더 영상 만들기’를 다시 누르면 반영됩니다");
+      cur = {...sel}; $("#btn-cover-clear").disabled = false; show();
+    };
+    $("#btn-cover-clear").onclick = async () => {
+      await api(`/api/cover/${name}`, {method: "POST", body: {clear: true}});
+      toast("자동 선택으로 되돌렸습니다 — 다시 렌더하면 반영됩니다"); $("#btn-cover-clear").disabled = true; cur = null; show();
+    };
+    show();
+  };
 }
 
 function researchHTML(it) {
