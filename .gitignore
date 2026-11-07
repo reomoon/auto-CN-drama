@@ -12,3 +12,7 @@ input/
 *.mp3
 *.wav
 !samples/*.mp4
+
+# 순위 카드 썸네일 캐시(유튜브 이미지), 정리 기록
+data/thumbs/
+data/cleanup.log
