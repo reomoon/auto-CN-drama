@@ -520,7 +520,8 @@ function updateTotal() {
   const share = tot ? narrSec / tot : 0, src = p.source_total ? tot / p.source_total : null;
   const pill = (ok, txt) => `<span class="pill ${ok ? "ok" : "bad"}">${txt}</span>`;
   $("#fair").innerHTML = `<span class="muted">공정 이용 점검</span>
-    ${pill(share >= R.narr_min - .05, `해설 비중 ${Math.round(share * 100)}% (기준 ${Math.round(R.narr_min * 100)}%↑)`)}
+    ${pill(share >= R.narr_min - .05 && share <= (R.narr_max ?? 1) + .05,
+      `원음 구간 ${Math.round((1 - share) * 100)}% (기준 ${Math.round((1 - (R.narr_max ?? 1)) * 100)}~${Math.round((1 - R.narr_min) * 100)}%)`)}
     ${p.timeline.some(t => t.role) ? pill(nAn >= R.analysis_min, `해석·감상 ${nAn}개 (기준 ${R.analysis_min}개↑)`) : ""}
     ${src !== null ? pill(src <= R.src_max, `원작 사용 ${(src * 100).toFixed(1)}% (기준 ${Math.round(R.src_max * 100)}%↓)`) : ""}`;
   state.plan.timeline.forEach((t, i) => {

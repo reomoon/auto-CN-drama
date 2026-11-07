@@ -41,7 +41,16 @@ EDGE_VOICE = env("EDGE_VOICE", "ko-KR-InJoonNeural")
 MAX_SEC = float(env("MAX_SEC", "90"))
 TARGET_MIN_SEC = float(env("TARGET_MIN_SEC", "62"))   # 틱톡 리워드는 1분 초과 필요
 TARGET_MAX_SEC = float(env("TARGET_MAX_SEC", "86"))
-FG_ZOOM = float(env("FG_ZOOM", "1.5"))                # 가로 영상 확대 비율 (클수록 양옆을 더 자르고 크게)
+TEMPLATE = env("TEMPLATE", "bold")                   # bold(굵은 제목 + 큰 화면) | classic(가운데 화면 + 위아래 여백)
+TITLE_FONT = env("TITLE_FONT", "Black Han Sans")     # bold 템플릿 글꼴 (fonts 폴더에 포함)
+BOLD_ZOOM = float(env("BOLD_ZOOM", "1.8"))            # bold 템플릿 최소 확대 (클수록 양옆을 더 자르고 크게)
+BOLD_FILL = float(env("BOLD_FILL", "0.75"))           # 제목 아래 영역을 이 비율 이상 채우도록 자동 확대
+BOLD_MAX_ZOOM = float(env("BOLD_MAX_ZOOM", "2.6"))    # 자동 확대 상한
+BOLD_TITLE1 = env("BOLD_TITLE1", "neon")              # bold 제목 1줄 색 (노랑)
+BOLD_TITLE2 = env("BOLD_TITLE2", "green")             # bold 제목 2줄 색 (형광 초록)
+BOLD_NARR = env("BOLD_NARR", "neon")                  # bold 해설 자막 색
+DUCK_FADE = float(env("DUCK_FADE", "0.35"))           # 나레이션 시작·끝에 원음이 줄었다 커지는 시간(초)
+FG_ZOOM = float(env("FG_ZOOM", "1.5"))                # classic 템플릿 가로 영상 확대 비율
 BG_STYLE = env("BG_STYLE", "black")                   # black(검은 여백) | blur(흐린 배경)
 TITLE2_COLOR = env("TITLE2_COLOR", "pink")            # 상단 제목 2줄 색: pink | yellow | #RRGGBB
 NARR_COLOR = env("NARR_COLOR", "yellow")              # 나레이션 자막 색
@@ -50,6 +59,7 @@ SUB_MARGIN_V = int(env("SUB_MARGIN_V", "470"))        # 자막 아래 여백(px)
 NARR_ORIG_VOLUME = float(env("NARR_ORIG_VOLUME", "0.15"))  # 나레이션 중 원본 볼륨
 
 # --- 공정 이용 가이드라인 (법적 기준이 아닌 내부 안전 기준) ---
-NARR_RATIO_MIN = float(env("NARR_RATIO_MIN", "0.5"))      # 해설(나레이션) 비중 하한
+NARR_RATIO_MIN = float(env("NARR_RATIO_MIN", "0.7"))      # 해설(나레이션) 비중 하한 → 원음 구간 30% 이하
+NARR_RATIO_MAX = float(env("NARR_RATIO_MAX", "0.8"))      # 해설 비중 상한 → 원음 구간 20% 이상
 MAX_SOURCE_RATIO = float(env("MAX_SOURCE_RATIO", "0.10"))  # 원작 사용량 상한 (쓴 원본 길이 ÷ 원본 회차 전체 길이)
 MIN_ANALYSIS = int(env("MIN_ANALYSIS", "2"))               # 해석·비평·감상 나레이션 최소 개수

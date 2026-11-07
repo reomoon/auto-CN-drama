@@ -111,8 +111,10 @@ PROMPT = """너는 중국 막장 드라마 숏폼(틱톡·네이버 클립) 해�
    - 원본 항목: narration은 빈 문자열. 원본 대사가 그대로 들린다. (한국어 번역은 다음 단계에서 따로 하니 쓰지 않는다)
 7. 첫 항목은 반드시 나레이션 훅, 마지막 항목은 반드시 나레이션(의견 + 댓글 유도 질문).
 8. 나레이션 항목의 길이 = 나레이션 글자수(공백 제외) ÷ {cps} + 0.5초. 화면은 from 지점부터 그 길이만큼 재생된다.
-9. 전체 길이 {min_s:.0f}~{max_s:.0f}초, 그중 나레이션 항목이 {narr_pct}% 이상.
-   예) 나레이션 6개 × 평균 7초 = 42초 + 원본 5개 × 평균 6초 = 30초 → 72초 (나레이션 58%)
+9. 전체 길이 {min_s:.0f}~{max_s:.0f}초. 원음이 그대로 나오는 원본 항목은 전체의 {orig_lo}~{orig_hi}%,
+   나머지는 나레이션 항목(원음은 작게 깔림).
+   예) 나레이션 8개 × 평균 7초 = 56초 + 원본 3개 × 평균 6초 = 18초 → 74초 (원본 24%)
+   원본 항목은 가장 강렬한 대사 2~4개만 골라 짧게 쓴다.
 10. 원본 항목 하나는 2~10초. 대사가 완결되는 지점에서 끊는다(문장 중간에서 자르지 않기).
 11. from/to는 위 목록에 있는 대사ID만, 같은 소스(s번호) 안에서, from이 to보다 앞이어야 한다.
 
@@ -241,8 +243,11 @@ def make_validator(by_id):
                 errs.append(f"예상 길이 {total:.1f}초 → {config.TARGET_MIN_SEC:.0f}~{config.TARGET_MAX_SEC:.0f}초로 맞출 것 "
                             f"(나레이션은 초당 {NARR_CPS}자로 계산. 현재 항목별: {', '.join(durs)})")
             if total and narr_total / total < config.NARR_RATIO_MIN - 0.05:
-                errs.append(f"나레이션 비중 {narr_total / total:.0%} → {config.NARR_RATIO_MIN:.0%} 이상이 되게 "
-                            f"나레이션 항목을 늘리거나 원본 항목을 줄일 것")
+                errs.append(f"원본 항목 비중 {1 - narr_total / total:.0%} → {1 - config.NARR_RATIO_MIN:.0%} 이하가 되게 "
+                            f"원본 항목을 줄이거나 나레이션 항목을 늘릴 것")
+            if total and narr_total / total > config.NARR_RATIO_MAX + 0.05:
+                errs.append(f"원본 항목 비중 {1 - narr_total / total:.0%} → {1 - config.NARR_RATIO_MAX:.0%} 이상이 되게 "
+                            f"강렬한 원본 대사 장면을 2~4개 넣을 것")
             n_an = sum(1 for it in tl if (it.get("narration") or "").strip() and it.get("role") == "해석")
             if n_an < config.MIN_ANALYSIS:
                 errs.append(f"'해석' 나레이션이 {n_an}개 → {config.MIN_ANALYSIS}개 이상 필요 "
@@ -376,7 +381,8 @@ def run(drama, videos, engine="auto", name=None, tts_engine=None, info=None):
     style = (config.PROMPTS / "style.txt").read_text(encoding="utf-8")
     prompt = PROMPT.format(drama=drama, info=info_text(info), style=style, lines=text, cps=NARR_CPS,
                            min_s=config.TARGET_MIN_SEC, max_s=config.TARGET_MAX_SEC,
-                           narr_pct=round(config.NARR_RATIO_MIN * 100), min_analysis=config.MIN_ANALYSIS)
+                           orig_lo=round((1 - config.NARR_RATIO_MAX) * 100),
+                           orig_hi=round((1 - config.NARR_RATIO_MIN) * 100), min_analysis=config.MIN_ANALYSIS)
     plan, used = llm.generate_json(prompt, engine=eng, validate=make_validator(by_id))
     print(f"  · 줄거리: {plan.get('story', '')}")
     translate(plan, by_id, used, drama, info)

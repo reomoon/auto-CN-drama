@@ -158,7 +158,8 @@ def plan_view(name):
             "caption": p.get("caption", ""), "hashtags": p.get("hashtags") or [], "opinion": p.get("opinion", ""),
             "engine": p.get("engine"), "est_total": round(t, 1), "cps": planmod.NARR_CPS,
             "story": p.get("story", ""), "source_total": p.get("_source_total"),
-            "rules": {"narr_min": config.NARR_RATIO_MIN, "src_max": config.MAX_SOURCE_RATIO,
+            "rules": {"narr_min": config.NARR_RATIO_MIN, "narr_max": config.NARR_RATIO_MAX,
+                      "src_max": config.MAX_SOURCE_RATIO,
                       "analysis_min": config.MIN_ANALYSIS},
             "rendered": bool(marks), "timeline": rows}
 
