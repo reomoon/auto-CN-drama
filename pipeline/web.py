@@ -580,7 +580,7 @@ def api_job():
     elif cmd == "render":
         name = _name(name)
         t = b.get("tts") if b.get("tts") in ("elevenlabs", "edge") else "edge"
-        job = JOBS.add(f"{'최종' if t == 'elevenlabs' else '미리보기'} 렌더 · {name}",
+        job = JOBS.add(f"{'렌더 영상 만들기' if t == 'elevenlabs' else '미리보기 렌더'} · {name}",
                        ["render", str(config.WORK / name), "--tts", t], target=name)
     else:
         abort(400, "알 수 없는 작업")

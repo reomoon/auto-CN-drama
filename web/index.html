@@ -422,12 +422,13 @@ function renderDetail(it) {
       ${p ? `<span class="muted small">시리즈: ${it.part || 1}편 · ‘다음 편’은 다음 회차로 이어서 만들고, 회차가 없으면 공식 채널에서 받습니다.</span>` : ""}`}
       </div></div>
     <div class="step ${it.video ? "done" : ""}"><div class="n">3</div><div class="body">
-      <b>렌더</b>
+      <b>렌더 영상 만들기</b>
       <div class="acts">
         <button class="btn" id="btn-prev" ${busy || !p ? "disabled" : ""}>미리보기 (무료 음성)</button>
-        <button class="btn primary" id="btn-final" ${busy || !p || !cfg.eleven ? "disabled" : ""}>최종 (ElevenLabs)</button>
+        <button class="btn primary" id="btn-final" ${busy || !p || !cfg.eleven ? "disabled" : ""}>렌더 영상 만들기</button>
       </div>
-      ${cfg.eleven ? "" : `<span class="muted small">최종 렌더는 .env에 ElevenLabs 키와 Voice ID를 넣으면 켜집니다.</span>`}
+      <span class="muted small">‘렌더 영상 만들기’는 ElevenLabs 목소리로 올릴 영상을 만듭니다 (1~2분). 미리보기는 크레딧 없이 흐름만 확인합니다.</span>
+      ${cfg.eleven ? "" : `<span class="muted small">‘렌더 영상 만들기’는 .env에 ElevenLabs 키와 Voice ID를 넣으면 켜집니다.</span>`}
     </div></div>`;
   const tags = p ? p.hashtags.join(" ") : "";
   const upload = p ? `
