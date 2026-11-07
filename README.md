@@ -52,6 +52,8 @@ copy .env.example .env   # ElevenLabs 키와 Voice ID 입력
 
 ### 외부 접속 (auto-cn.hot-news.app)
 
+**`start_dashboard.bat`을 더블클릭**하면 대시보드와 외부 연결이 켜지고 브라우저가 열립니다(바탕화면 바로가기로 만들어 두면 편합니다). 이미 실행 중이면 브라우저만 열고, 검은 창을 닫으면 꺼집니다. 명령어로 직접 켤 때:
+
 ```powershell
 .\.venv\Scripts\python main.py web --remote
 ```
