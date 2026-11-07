@@ -21,13 +21,15 @@ def narr_sec(text):
     return len(re.sub(r"\s", "", text or "")) / NARR_CPS
 
 
-def merge_fragments(segs, max_gap=0.7, max_chars=30):
-    """Whisper가 쉼표마다 자른 조각을 문장 단위로 합친다 (번역이 밀리거나 끊기는 것 방지)."""
+def merge_fragments(segs, max_gap=0.35, max_chars=24, max_sec=5.0):
+    """Whisper가 쉼표마다 자른 조각을 문장 단위로 합친다 (번역이 밀리거나 끊기는 것 방지).
+    간격이 길거나 너무 길어지면 합치지 않는다 — 다른 사람의 말까지 한 줄로 합쳐지지 않게."""
     out = []
     for s in segs:
         if out:
             p = out[-1]
             if (s["start"] - p["end"] <= max_gap and len(p["text"]) + len(s["text"]) <= max_chars
+                    and s["end"] - p["start"] <= max_sec
                     and not re.search(r"[。！？!?…]$", p["text"])):
                 p["text"] = p["text"].rstrip("，,、 ") + "，" + s["text"]
                 p["end"] = s["end"]

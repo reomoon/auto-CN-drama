@@ -412,12 +412,24 @@ def run(wdir, tts_engine=None, voice=None):
                 t += d
         else:
             n_from, n_to = int(it["from"][1:]), int(it["to"][1:])
-            for n in range(n_from, n_to + 1):
-                ln = by_id.get(f"L{n}")
-                ko = (it.get("subs") or {}).get(f"L{n}")
-                if ln and ko:
-                    st = max(T, ln["start"] - start + T)
-                    en = min(T + seg, ln["end"] - start + T + 0.2)
+            shown = [(by_id[f"L{n}"], (it.get("subs") or {}).get(f"L{n}")) for n in range(n_from, n_to + 1)
+                     if f"L{n}" in by_id and (it.get("subs") or {}).get(f"L{n}")]
+            for k, (ln, ko) in enumerate(shown):
+                st = max(T, ln["start"] - start + T)
+                en = min(T + seg, ln["end"] - start + T + 0.2)
+                if k + 1 < len(shown):            # 다음 대사가 나오면 앞 대사는 내린다 (두 줄 겹침 방지)
+                    en = min(en, shown[k + 1][0]["start"] - start + T - 0.02)
+                en = max(en, st + 0.3)
+                # 번역에 문장이 여러 개면(두 사람 말이 한 줄로 합쳐진 경우 등) 글자 수에 맞춰 차례로 나눠 보여준다
+                parts = [x.strip() for x in re.split(r"(?<=[.!?…])\s+", ko.strip()) if x.strip()]
+                if len(parts) > 1 and en - st > 2.5:
+                    total = sum(len(x) for x in parts)
+                    t = st
+                    for x in parts:
+                        d = (en - st) * len(x) / total
+                        events.append((t, t + d, "Dialog", x))
+                        t += d
+                else:
                     events.append((st, en, "Dialog", ko))
         T += seg
 

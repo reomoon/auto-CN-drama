@@ -591,8 +591,12 @@ function bindCovers(it) {
       <div class="cpick"><img id="cprev" alt="">
         <div class="body">
           <div class="small"><b id="ctime"></b> <span class="muted" id="cstate"></span></div>
-          <input type="range" id="cslider" step="0.2" style="width:100%">
-          <div class="muted small">슬라이더로 0.2초 단위로 옮겨 보세요. 실제 영상에서는 얼굴 위치에 맞춰 양옆이 잘립니다.</div>
+          <div class="acts" style="flex-wrap:nowrap">
+            <button class="btn" id="cprev1" title="1초 앞으로 (←)">◀ 1초</button>
+            <input type="range" id="cslider" step="0.2" style="flex:1;min-width:0">
+            <button class="btn" id="cnext1" title="1초 뒤로 (→)">1초 ▶</button>
+          </div>
+          <div class="muted small">← → 키로 1초씩, Shift + ← → 로 0.2초씩 움직입니다. 실제 영상에서는 얼굴 위치에 맞춰 양옆이 잘립니다.</div>
           <div class="acts"><button class="btn primary" id="btn-cover-save">이 장면으로 정하기</button>
             <button class="btn ghost" id="btn-cover-clear" ${cur ? "" : "disabled"}>자동으로 되돌리기</button></div>
         </div></div>`;
@@ -611,6 +615,21 @@ function bindCovers(it) {
     };
     document.querySelectorAll(".cand").forEach(el => el.onclick = () => { const c = d.candidates[+el.dataset.i]; sel.src = c.src; sel.t = c.t; show(); });
     slider.oninput = () => { sel.t = +slider.value; show(); };
+    const step = dt => {
+      const [a, b] = rng(sel.src);
+      sel.t = Math.round(Math.min(b, Math.max(a, sel.t + dt)) * 10) / 10; show();
+    };
+    $("#cprev1").onclick = () => step(-1);
+    $("#cnext1").onclick = () => step(1);
+    // ← → 1초, Shift+← → 0.2초 (썸네일 칸이 화면에 있고, 글 입력 중이 아닐 때만)
+    if (window._coverKeys) document.removeEventListener("keydown", window._coverKeys);
+    window._coverKeys = e => {
+      if (!document.body.contains(slider) || !["ArrowLeft", "ArrowRight"].includes(e.key)) return;
+      if (e.target.matches("input:not([type=range]), textarea, select")) return;
+      e.preventDefault();
+      step((e.key === "ArrowLeft" ? -1 : 1) * (e.shiftKey ? 0.2 : 1));
+    };
+    document.addEventListener("keydown", window._coverKeys);
     $("#btn-cover-save").onclick = async () => {
       await api(`/api/cover/${name}`, {method: "POST", body: sel});
       toast("썸네일 장면을 정했습니다 — ‘렌더 영상 만들기’를 다시 누르면 반영됩니다");

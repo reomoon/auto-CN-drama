@@ -62,7 +62,7 @@ MAX_SEC = float(env("MAX_SEC", "90"))
 TARGET_MIN_SEC = float(env("TARGET_MIN_SEC", "62"))   # 틱톡 리워드는 1분 초과 필요
 TARGET_MAX_SEC = float(env("TARGET_MAX_SEC", "86"))
 TEMPLATE = env("TEMPLATE", "bold")                   # bold(굵은 제목 + 큰 화면) | classic(가운데 화면 + 위아래 여백)
-TITLE_FONT = env("TITLE_FONT", "Black Han Sans")     # bold 템플릿 글꼴 (fonts 폴더에 포함)
+TITLE_FONT = env("TITLE_FONT", "Black Han Sans")     # bold 템플릿 글꼴 (fonts 폴더에 포함: Black Han Sans, Pretendard Black)
 BOLD_ZOOM = float(env("BOLD_ZOOM", "1.8"))            # bold 템플릿 최소 확대 (클수록 양옆을 더 자르고 크게)
 BOLD_FILL = float(env("BOLD_FILL", "0.75"))           # 제목 아래 영역을 이 비율 이상 채우도록 자동 확대
 BOLD_MAX_ZOOM = float(env("BOLD_MAX_ZOOM", "2.2"))    # 자동 확대 상한 (너무 키우면 흐려짐)
@@ -88,7 +88,7 @@ CLEAN_AFTER_DAYS = float(env("CLEAN_AFTER_DAYS", "7"))  # 회차로 만든 편�
 AUTO_INSTA_DIR = env("AUTO_INSTA_DIR", r"C:\python\auto-insta")
 CLIP_ACCOUNT = env("CLIP_ACCOUNT", "docu")             # 네이버 클립 계정: docu(다큐 클립 계정) | main
 CLIP_CATEGORY = env("CLIP_CATEGORY", "이슈")           # 클립 카테고리 (클립 업로드 화면의 이름 그대로)
-UPLOAD_AI_LABEL = env("UPLOAD_AI_LABEL", "1") not in ("0", "false", "no")   # AI 음성 나레이션 → AI 표시 켜기
+UPLOAD_AI_LABEL = env("UPLOAD_AI_LABEL", "0") not in ("0", "false", "no")   # 틱톡·클립 'AI 생성' 표시 (기본: 켜지 않음)
 
 # --- 대시보드 원격 접속 ---
 DASHBOARD_PASSWORD = env("DASHBOARD_PASSWORD")   # 비우면 원격(터널·Wi-Fi) 접속 차단, 이 PC(127.0.0.1)는 항상 허용
