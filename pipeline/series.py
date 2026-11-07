@@ -93,6 +93,12 @@ def make(base, part=None, engine="auto", tts_engine=None, eps=None):
         windows = {0: (cuts[piece], cuts[piece + 1])}
         where = f" {['전반', '후반'][piece] if n == 2 else f'{piece + 1}/{n}'} {plan.fmt(cuts[piece])}~{plan.fmt(cuts[piece + 1])}"
     print(f"=== {drama} {part}편 ({', '.join(f.name for f in files)}{where}) ===")
+    hot = ""
+    try:
+        from . import research
+        hot = research.prompt_text(research.get(base, info))
+    except Exception as e:  # noqa: BLE001
+        print(f"  ! 인기 장면 조사 실패 (없이 진행): {e}")
     return plan.run(drama, [str(f) for f in files], engine=engine, name=part_dir(base, part).name,
-                    tts_engine=tts_engine, info=info, windows=windows,
+                    tts_engine=tts_engine, info=info, windows=windows, hot=hot,
                     series={"base": base, "part": part, "eps": eps, "piece": piece, "split": n, "prev": prev})

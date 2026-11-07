@@ -63,14 +63,20 @@ def transcribe(src, cache):
     cache = Path(cache)
     if cache.exists():
         return json.loads(cache.read_text(encoding="utf-8"))
-    print(f"  · 음성 인식: {Path(src).name}")
-    segs, _ = _load_model().transcribe(str(src), language="zh", vad_filter=True, beam_size=5,
-                                       initial_prompt="以下是普通话的句子。")
-    out = []
+    print(f"  · 음성 인식: {Path(src).name} (처음 한 번만, 회차당 2~5분)", flush=True)
+    segs, info = _load_model().transcribe(str(src), language="zh", vad_filter=True, beam_size=5,
+                                          initial_prompt="以下是普通话的句子。")
+    total = getattr(info, "duration", 0) or duration(src)
+    out, shown = [], 0
     for s in segs:
         t = s.text.strip()
         if t:
             out.append({"start": round(s.start, 2), "end": round(s.end, 2), "text": t})
+        pct = int(s.end * 100 / total) if total else 0
+        if pct >= shown + 10:
+            shown = pct // 10 * 10
+            print(f"    음성 인식 {shown}% ({int(s.end // 60)}:{int(s.end % 60):02d} / "
+                  f"{int(total // 60)}:{int(total % 60):02d}) · 대사 {len(out)}개", flush=True)
     cache.write_text(json.dumps(out, ensure_ascii=False, indent=1), encoding="utf-8")
     print(f"    {len(out)}개 대사")
     return out

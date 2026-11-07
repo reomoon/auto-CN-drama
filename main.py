@@ -86,6 +86,9 @@ def main():
     u.add_argument("--private", action="store_true", help="틱톡 '나만 보기'로 올리기")
     u.add_argument("--dry-run", action="store_true", help="틱톡: 게시 버튼 직전까지만")
 
+    rs = sub.add_parser("research", help="다른 사람들이 많이 본 장면 조사 (유튜브 조회수 + 웨이보·더우인 화제)")
+    rs.add_argument("base", help="input 폴더 이름")
+
     c = sub.add_parser("cleanup", help="다 올린 지 오래된 원본 회차 지우기")
     c.add_argument("--dry-run", action="store_true", help="지울 대상만 보여주기")
 
@@ -126,6 +129,9 @@ def main():
     elif a.cmd == "upload":
         from pipeline import upload
         upload.run(a.workdir, a.to, private=a.private, dry_run=a.dry_run)
+    elif a.cmd == "research":
+        from pipeline import research
+        print(research.prompt_text(research.get(a.base, force=True)))
     elif a.cmd == "cleanup":
         from pipeline import cleanup
         cleanup.run(dry_run=a.dry_run)

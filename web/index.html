@@ -81,6 +81,11 @@ main{max-width:1280px;margin:0 auto;padding:24px}
 .fair .pill.ok{background:var(--ok-soft);color:var(--ok)}
 .fair .pill.bad{background:var(--accent-soft);color:var(--accent)}
 .story{padding:10px 16px;border-bottom:1px solid var(--line);font-size:14px}
+.research summary{cursor:pointer;display:flex;gap:10px;align-items:center;flex-wrap:wrap;list-style:none}
+.research summary::-webkit-details-marker{display:none}
+.research summary button{margin-left:auto}
+.research .hot{display:flex;flex-direction:column;padding:8px 0;border-top:1px solid var(--line);font-size:14px}
+.research .hot:first-of-type{margin-top:10px}
 .role{font-size:11px;font-weight:700;color:var(--muted)}
 .role.an{color:var(--ok)}
 .work{display:grid;grid-template-columns:280px 1fr;gap:18px;align-items:start}
@@ -121,6 +126,8 @@ main{max-width:1280px;margin:0 auto;padding:24px}
 .ep:hover{border-color:var(--muted)}
 .ep.on{background:var(--accent);border-color:var(--accent);color:#fff}
 .ep.have{background:var(--ok-soft);color:var(--ok);border-color:transparent;cursor:default}
+.ep.made{background:var(--ok-soft);color:var(--ok);border-color:transparent}
+.ep.made.on{background:var(--accent);color:#fff}
 .files span{background:var(--panel-2);border:1px solid var(--line);border-radius:6px;padding:1px 8px}
 select{border:1px solid var(--line);background:var(--panel);border-radius:10px;padding:6px 8px}
 .copyrow{display:flex;gap:8px;align-items:flex-start;padding:8px 0;border-top:1px solid var(--line)}
@@ -397,13 +404,22 @@ function renderDetail(it) {
     </div></div>
     <div class="step ${p ? "done" : ""}"><div class="n">2</div><div class="body">
       <b>하이라이트 + 대본</b>
-      ${p ? `<span class="muted small">${esc(p.engine)} 작성 · 예상 ${p.est_total}초</span>` : ""}
+      ${p ? `<span class="muted small">이 편(${it.part || 1}편): ${esc(p.engine)} 작성 · 예상 ${p.est_total}초</span>` : ""}
+      ${(it.parts || []).length ? `<span class="small">만들 편을 고르세요</span>
+      <div class="eps" id="partpick">${it.parts.map(x => `<button class="ep ${x.status ? "made" : ""}" data-part="${x.n}"
+          title="${x.fetch ? `${x.ep}화는 아직 안 받아서, 만들 때 공식 채널에서 받습니다` : ""}">${esc(x.label)}${x.status ? ` · ${x.status}` : ""}${x.fetch ? " ⤓" : ""}</button>`).join("")}</div>
+      <div class="acts">
+        <select id="llm"><option value="auto">자동 (번갈아)</option><option value="claude">Claude</option><option value="gpt">GPT</option></select>
+        <button class="btn primary" id="btn-parts" ${busy ? "disabled" : ""}>선택한 편 대본 만들기</button>
+        <span class="muted small" id="part-count"></span>
+      </div>
+      <span class="muted small">여러 편은 앞 편 줄거리를 이어받도록 순서대로 하나씩 만듭니다. ⤓ 표시는 회차를 받으면서 만듭니다.</span>` : `
       <div class="acts">
         <select id="llm"><option value="auto">자동 (번갈아)</option><option value="claude">Claude</option><option value="gpt">GPT</option></select>
         <button class="btn ${p ? "" : "primary"}" id="btn-plan" ${busy || !it.inputs.length ? "disabled" : ""}>${p ? "다시 만들기" : "대본 만들기"}</button>
         ${p && it.has_input_dir ? `<button class="btn" id="btn-next" ${busy ? "disabled" : ""}>다음 편 만들기</button>` : ""}
       </div>
-      ${p ? `<span class="muted small">시리즈: ${it.part || 1}편 · ‘다음 편’은 다음 회차로 이어서 만들고, 회차가 없으면 공식 채널에서 받습니다.</span>` : ""}
+      ${p ? `<span class="muted small">시리즈: ${it.part || 1}편 · ‘다음 편’은 다음 회차로 이어서 만들고, 회차가 없으면 공식 채널에서 받습니다.</span>` : ""}`}
       </div></div>
     <div class="step ${it.video ? "done" : ""}"><div class="n">3</div><div class="body">
       <b>렌더</b>
@@ -446,6 +462,7 @@ function renderDetail(it) {
       <div class="phone">${player}</div>
       <div class="side"><div class="card box"><h4>진행</h4>${steps}</div>${upload}</div>
     </div>
+    ${researchHTML(it)}
     ${p ? timelineHTML() : ""}`;
 
   // 이벤트
@@ -474,7 +491,23 @@ function renderDetail(it) {
     job({cmd: "fetch", name: it.base || it.name, eps});
   };
   if ($("#btn-next")) $("#btn-next").onclick = () => job({cmd: "series", name: it.base, llm: $("#llm").value});
-  $("#btn-plan").onclick = () => {
+  if ($("#btn-research")) $("#btn-research").onclick = e => { e.preventDefault(); job({cmd: "research", name: it.base || it.name}); };
+  const pickedParts = new Set();
+  document.querySelectorAll("[data-part]").forEach(b => b.onclick = () => {
+    const n = +b.dataset.part;
+    pickedParts.has(n) ? pickedParts.delete(n) : pickedParts.add(n);
+    b.classList.toggle("on", pickedParts.has(n));
+    const list = [...pickedParts].sort((x, y) => x - y);
+    $("#part-count").textContent = list.length ? `${list.join(", ")}편 · ${list.length}개 (편당 3~5분)` : "";
+  });
+  if ($("#btn-parts")) $("#btn-parts").onclick = () => {
+    const list = [...pickedParts].sort((x, y) => x - y);
+    if (!list.length) return toast("만들 편을 먼저 고르세요");
+    const redo = it.parts.filter(x => list.includes(x.n) && x.status).map(x => `${x.n}편`);
+    if (redo.length && !confirm(`${redo.join(", ")}은 이미 있습니다. 새로 만들까요? (이전 대본은 plan_prev.json으로 보관)`)) return;
+    job({cmd: "series_parts", name: it.base || it.name, parts: list, llm: $("#llm").value});
+  };
+  if ($("#btn-plan")) $("#btn-plan").onclick = () => {
     if (p && !confirm("지금 대본을 버리고 새로 만들까요? (이전 대본은 plan_prev.json으로 보관)")) return;
     job({cmd: p ? "replan" : "plan", name: it.name, llm: $("#llm").value});
   };
@@ -494,6 +527,22 @@ function renderDetail(it) {
     loadItems(); loadRank(); select(it.name, true);
   });
   if (p) bindTimeline(it);
+}
+
+function researchHTML(it) {
+  if (!it.has_input_dir || !it.info?.title_zh) return "";
+  const r = it.research, views = n => n >= 10000 ? `${Math.round(n / 10000)}만` : `${n}`;
+  const body = r ? `
+    ${(r.hot || []).map(h => `<div class="hot"><b>${h.episode ? `[${esc(h.episode)}화] ` : ""}${esc(h.scene)}</b>
+        <span class="muted small">${esc(h.why || "")}</span></div>`).join("")}
+    ${(r.clips || []).length ? `<div class="small muted" style="margin-top:8px">다른 채널 관련 영상 (조회수 순)</div>
+      ${r.clips.slice(0, 8).map(c => `<div class="small"><a href="${esc(c.url)}" target="_blank" rel="noopener">${esc(c.title.slice(0, 60))}</a>
+        · 조회수 ${views(c.views)}${c.official ? " · 공식" : ""}</div>`).join("")}` : ""}
+    <div class="muted small" style="margin-top:8px">조사: ${esc((r.at || "").replace("T", " ").slice(0, 16))} · 대본을 만들 때 자동으로 참고합니다 (3일마다 새로 조사)</div>`
+    : `<div class="muted small">아직 조사하지 않았습니다. 대본을 만들 때 자동으로 조사하거나, ‘지금 조사’를 누르세요.</div>`;
+  return `<details class="card box research" ${r ? "" : "open"}><summary><b>인기 장면 참고</b>
+      <span class="muted small">다른 사람들이 많이 본 장면 · 웨이보·더우인 화제</span>
+      <button class="btn ghost small" id="btn-research" ${it.busy ? "disabled" : ""}>지금 조사</button></summary>${body}</details>`;
 }
 
 async function renderJob(name, tts) {
@@ -613,9 +662,11 @@ async function pollJobs(now) {
     const active = jobs.filter(j => j.status === "running" || j.status === "queued");
     const run = jobs.find(j => j.status === "running");
     $("#jobdot").classList.toggle("run", !!active.length);
-    $("#jobtext").textContent = run ? run.label : active.length ? `대기 ${active.length}` : jobs[0] ? `최근: ${jobs[0].label} ${jobs[0].status === "failed" ? "실패" : "완료"}` : "작업 없음";
+    const lastLine = j => (j.log || "").trim().split("\n").pop().trim();
+    $("#jobtext").textContent = run ? `${run.label}${lastLine(run) ? " — " + lastLine(run) : ""}` : active.length ? `대기 ${active.length}` : jobs[0] ? `최근: ${jobs[0].label} ${jobs[0].status === "failed" ? "실패" : "완료"}` : "작업 없음";
+    const dur = j => { const s = Math.round(((j.ended || Date.now() / 1000) - j.started)); return j.started ? ` · ${Math.floor(s / 60)}분 ${String(s % 60).padStart(2, "0")}초` : ""; };
     $("#jobs").innerHTML = jobs.map(j => `<div class="job"><div class="jh"><span>${esc(j.label)}</span>
-      <span class="st ${j.status}">${({queued: "대기", running: "진행 중", done: "완료", failed: "실패"})[j.status]}</span></div>
+      <span class="st ${j.status}">${({queued: "대기", running: "진행 중", done: "완료", failed: "실패"})[j.status]}${dur(j)}</span></div>
       <pre>${esc(j.log || "")}</pre></div>`).join("") || `<div class="emptystate small">아직 실행한 작업이 없습니다.</div>`;
     document.querySelectorAll(".job pre").forEach(pre => pre.scrollTop = pre.scrollHeight);
     if (lastActive && active.length < lastActive) {   // 작업이 끝나면 화면 갱신

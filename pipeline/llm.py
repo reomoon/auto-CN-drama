@@ -36,6 +36,29 @@ def find_codex():
     return p
 
 
+def _run(cmd, prompt, timeout, cwd, label):
+    """CLI 를 실행하면서 30초마다 '작성 중… N분' 을 찍어 작업 로그에서 진행 상황이 보이게 한다."""
+    import threading
+    import time
+    done = threading.Event()
+
+    def beat():
+        start = time.time()
+        while not done.wait(30):
+            s = int(time.time() - start)
+            print(f"    {label}… {s // 60}분 {s % 60:02d}초", flush=True)
+
+    threading.Thread(target=beat, daemon=True).start()
+    try:
+        return subprocess.run(cmd, input=prompt, capture_output=True, text=True, encoding="utf-8",
+                              errors="replace", timeout=timeout, cwd=cwd)
+    finally:
+        done.set()
+
+
+TASK_LABEL = {"value": "응답 기다리는 중"}
+
+
 def _run_claude(prompt, web=False, timeout=900):
     cmd = [find_claude(), "-p", "--output-format", "text"]
     if config.CLAUDE_MODEL:
@@ -43,8 +66,7 @@ def _run_claude(prompt, web=False, timeout=900):
     if web:
         cmd += ["--allowedTools", "WebSearch", "WebFetch"]
     with tempfile.TemporaryDirectory() as d:
-        r = subprocess.run(cmd, input=prompt, capture_output=True, text=True, encoding="utf-8",
-                           errors="replace", timeout=timeout, cwd=d)
+        r = _run(cmd, prompt, timeout, d, f"Claude {TASK_LABEL['value']}")
     if r.returncode != 0 or not r.stdout.strip():
         raise RuntimeError(f"claude 실패 (exit {r.returncode}): {(r.stderr or r.stdout)[-500:]}")
     return r.stdout.strip()
@@ -60,8 +82,7 @@ def _run_gpt(prompt, web=False, timeout=900):
                "-o", out, "-"]
         if web:
             cmd[2:2] = ["-c", 'web_search="live"']
-        r = subprocess.run(cmd, input=prompt, capture_output=True, text=True, encoding="utf-8",
-                           errors="replace", timeout=timeout, cwd=d)
+        r = _run(cmd, prompt, timeout, d, f"GPT {TASK_LABEL['value']}")
         text = Path(out).read_text(encoding="utf-8").strip() if os.path.exists(out) else ""
     if not text:
         raise RuntimeError(f"codex 실패 (exit {r.returncode}): {(r.stderr or r.stdout)[-500:]}")
@@ -107,8 +128,10 @@ def extract_json(text):
     return json.loads(text[s:e + 1])
 
 
-def generate_json(prompt, engine="claude", web=False, validate=None, retries=2):
+def generate_json(prompt, engine="claude", web=False, validate=None, retries=2, label=None):
     """JSON 응답을 받아 검증한다. 검증 오류는 모델에게 되돌려 고치게 한다."""
+    if label:
+        TASK_LABEL["value"] = label
     p = prompt
     for attempt in range(retries + 1):
         text, used = generate(p, engine=engine, web=web)
@@ -120,6 +143,7 @@ def generate_json(prompt, engine="claude", web=False, validate=None, retries=2):
         if not errors:
             return data, used
         print(f"  ! 응답 검증 실패({attempt + 1}/{retries + 1}): {'; '.join(errors)[:300]}")
+        print("    → 고쳐 달라고 다시 요청합니다", flush=True)
         engine = used
         p = (prompt + "\n\n---\n이전 응답:\n" + text[-6000:] +
              "\n\n위 응답에 다음 문제가 있습니다. 모두 고쳐서 JSON만 다시 출력하세요:\n- " + "\n- ".join(errors))

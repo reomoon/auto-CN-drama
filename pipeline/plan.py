@@ -139,7 +139,7 @@ PROMPT = """너는 중국 막장 드라마 숏폼(틱톡·네이버 클립) 해�
 10. 원본 항목 하나는 2~10초. 대사가 완결되는 지점에서 끊는다(문장 중간에서 자르지 않기).
 11. from/to는 위 목록에 있는 대사ID만, 같은 소스(s번호) 안에서, from이 to보다 앞이어야 한다.
 
-{series}JSON만 출력하라:
+{series}{hot}JSON만 출력하라:
 {{
  "story": "이 영상이 따라가는 핵심 갈등 한 문장",
  "cover": "썸네일로 쓸 가장 자극적인 장면의 대사ID (예: L240)",
@@ -324,7 +324,7 @@ def translate(plan, by_id, engine, drama, info):
         return [f"번역 빠짐: {', '.join(miss)}"] if miss else []
 
     print(f"  · 대사 {len(want)}개 번역 (문맥 포함)")
-    subs, _ = llm.generate_json(prompt, engine=engine, validate=validate)
+    subs, _ = llm.generate_json(prompt, engine=engine, validate=validate, label="대사 번역 중")
     for it in plan["timeline"]:
         if not (it.get("narration") or "").strip():
             ids = [f"L{n}" for n in range(int(it["from"][1:]), int(it["to"][1:]) + 1)]
@@ -410,7 +410,8 @@ def info_text(info):
     return "".join(f"{k}: {v}\n" for k, v in rows if v)
 
 
-def run(drama, videos, engine="auto", name=None, tts_engine=None, info=None, series=None, windows=None):
+def run(drama, videos, engine="auto", name=None, tts_engine=None, info=None, series=None, windows=None,
+        hot=""):
     videos = [str(Path(v).resolve()) for v in videos]
     for v in videos:
         if not Path(v).exists():
@@ -443,11 +444,12 @@ def run(drama, videos, engine="auto", name=None, tts_engine=None, info=None, ser
                      for x in shown)
     style = (config.PROMPTS / "style.txt").read_text(encoding="utf-8")
     prompt = PROMPT.format(drama=drama, info=info_text(info), style=style, lines=text, cps=NARR_CPS,
-                           series=series_text(series),
+                           series=series_text(series), hot=hot or "",
                            min_s=config.TARGET_MIN_SEC, max_s=config.TARGET_MAX_SEC,
                            orig_lo=round((1 - config.NARR_RATIO_MAX) * 100),
                            orig_hi=round((1 - config.NARR_RATIO_MIN) * 100), min_analysis=config.MIN_ANALYSIS)
-    plan, used = llm.generate_json(prompt, engine=eng, validate=make_validator(by_id))
+    plan, used = llm.generate_json(prompt, engine=eng, validate=make_validator(by_id),
+                                   label="하이라이트 고르고 대본 쓰는 중")
     print(f"  · 줄거리: {plan.get('story', '')}")
     translate(plan, by_id, used, drama, info)
     if series:

@@ -183,6 +183,7 @@ def item(name):
     official_eps = _catalog_eps(info.get("title_zh"))
     have = {int(m.group(1)) for v in vids if (m := re.match(r"EP0*(\d+)$", v.stem, re.I))}
     nxt = [e for e in (official_eps or range(1, 200)) if e not in have][:2]
+    parts_list = _parts_list(base, have, official_eps) if d_in.is_dir() else []
     if st.get("claim"):
         stage = "claimed"
     elif video.exists() and (st.get("tiktok") or st.get("clip")):
@@ -200,7 +201,8 @@ def item(name):
         "drama": (p or {}).get("drama") or info.get("title_ko") or re.sub(r"^[A-Z]\d+_", "", name).replace("_", " "),
         "info": info,
         "inputs": [{"name": v.name, "mb": round(v.stat().st_size / 2**20)} for v in vids],
-        "official_eps": official_eps, "have_eps": sorted(have),
+        "official_eps": official_eps, "have_eps": sorted(have), "parts": parts_list,
+        "research": _read(d_in / "research.json") if d_in.is_dir() else None,
         "next_eps": (f"{nxt[0]}-{nxt[-1]}" if len(nxt) > 1 and nxt[-1] == nxt[0] + 1 else ",".join(map(str, nxt))),
         "has_input_dir": d_in.is_dir(),
         "stage": stage,
@@ -212,6 +214,30 @@ def item(name):
         "status": st,
         "mtime": max([x.stat().st_mtime for x in (d_in, wdir, video) if x.exists()] or [0]),
     }
+
+
+def _parts_list(base, have, official_eps):
+    """받은 회차(+ 다음 회차 하나)로 만들 수 있는 편 목록과 상태."""
+    from . import series as ser
+    done = dict(ser.parts(base))
+    n = max(1, config.SERIES_SPLIT)
+    eps = sorted(have)
+    nxt = next((e for e in (official_eps or []) if e not in have and e > (max(eps) if eps else 0)), None)
+    if nxt:
+        eps.append(nxt)
+    out = []
+    for ep in eps:
+        for k in range(n):
+            num = (ep - 1) * n + k + 1
+            d = ser.part_dir(base, num).name
+            st = _read(config.OUT / d / "status.json", {})
+            status = ("업로드됨" if (st.get("tiktok") or st.get("clip")) else
+                      "완성" if (config.OUT / d / f"{d}.mp4").exists() else
+                      "대본" if num in done else None)
+            half = (["전반", "후반"][k] if n == 2 else f"{k + 1}/{n}") if n > 1 else "전체"
+            out.append({"n": num, "ep": ep, "label": f"{num}편 · {ep}화 {half}", "status": status,
+                        "dir": d, "fetch": ep not in have})
+    return out
 
 
 _cat_cache = {"mtime": 0, "map": {}}
@@ -510,6 +536,27 @@ def api_job():
         name = _name(name)
         eps = b.get("eps") if re.fullmatch(r"[\d,\-]{1,20}", str(b.get("eps", ""))) else "1-2"
         job = JOBS.add(f"공식 영상 찾기 · {name}", ["fetch", "--only", name, "--eps", eps], target=name)
+    elif cmd == "research":
+        base = _name(name)
+        job = JOBS.add(f"인기 장면 조사 · {base}", ["research", base], target=base)
+        return jsonify(job)
+    elif cmd == "series_parts":
+        base = _name(name)
+        llm = b.get("llm") if b.get("llm") in ("claude", "gpt") else "auto"
+        nums = sorted({int(x) for x in (b.get("parts") or []) if str(x).isdigit() and 0 < int(x) < 1000})
+        if not nums:
+            abort(400, "만들 편을 고르세요")
+        from . import series as ser
+        jobs = []
+        for num in nums:   # 앞 편 줄거리를 이어받도록 순서대로 하나씩
+            w = config.WORK / ser.part_dir(base, num).name
+
+            def before(w=w):
+                if (w / "plan.json").exists():
+                    (w / "plan.json").replace(w / "plan_prev.json")
+            jobs.append(JOBS.add(f"{num}편 대본 만들기 · {base}", ["series", base, "--part", str(num), "--llm", llm],
+                                 target=base, before=before))
+        return jsonify(jobs[-1])
     elif cmd == "series":
         base = _name(name)
         llm = b.get("llm") if b.get("llm") in ("claude", "gpt") else "auto"
