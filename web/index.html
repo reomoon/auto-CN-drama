@@ -141,6 +141,7 @@ main{max-width:1280px;margin:0 auto;padding:24px}
 .ep.on{background:var(--accent-strong);border-color:var(--accent-ink);color:var(--accent-ink);font-weight:700}
 .ep.have{background:var(--done-soft);color:var(--done);border-color:transparent;cursor:default;font-weight:700}
 .ep.made{background:var(--done-soft);color:var(--done);border-color:transparent;font-weight:700}
+.ep.here{outline:2px solid var(--accent-ink);outline-offset:1px}
 .ep.made.on{background:var(--accent-strong);border-color:var(--accent-ink);color:var(--accent-ink);font-weight:700}
 .files span{background:var(--panel-2);border:1px solid var(--line);border-radius:6px;padding:1px 8px}
 select{border:1px solid var(--line);background:var(--panel);border-radius:10px;padding:6px 8px}
@@ -420,14 +421,19 @@ function renderDetail(it) {
       <b>하이라이트 + 대본</b>
       ${p ? `<span class="muted small">이 편(${it.part || 1}편): ${esc(p.engine)} 작성 · 예상 ${p.est_total}초</span>` : ""}
       ${(it.parts || []).length ? `<span class="small">만들 편을 고르세요</span>
-      <div class="eps" id="partpick">${it.parts.map(x => `<button class="ep ${x.status ? "made" : ""}" data-part="${x.n}"
-          title="${x.fetch ? `${x.ep}화는 아직 안 받아서, 만들 때 공식 채널에서 받습니다` : ""}">${x.status ? "✓ " : ""}${esc(x.label)}${x.status ? ` · ${x.status}` : ""}${x.fetch ? " ⤓" : ""}</button>`).join("")}</div>
+      <div class="eps" id="partpick">${it.parts.map(x => {
+          const here = x.dir === it.name;
+          const tip = here ? "지금 보고 있는 편" : x.status ? "눌러서 이 편 열기" : x.fetch ? `${x.ep}화는 아직 안 받아서, 만들 때 공식 채널에서 받습니다` : "눌러서 만들 편으로 고르기";
+          return `<button class="ep ${x.status ? "made" : ""} ${here ? "here" : ""}" ${x.status ? `data-open-part="${esc(x.dir)}"` : `data-part="${x.n}"`}
+            title="${tip}">${x.status ? "✓ " : ""}${esc(x.label)}${x.status ? ` · ${x.status}` : ""}${x.fetch ? " ⤓" : ""}${here ? " · 보는 중" : ""}</button>`;
+        }).join("")}</div>
       <div class="acts">
         <select id="llm"><option value="auto">자동 (번갈아)</option><option value="claude">Claude</option><option value="gpt">GPT</option></select>
         <button class="btn primary" id="btn-parts" ${busy ? "disabled" : ""}>선택한 편 대본 만들기</button>
+        ${p ? `<button class="btn" id="btn-plan" ${busy ? "disabled" : ""}>이 편(${it.part || 1}편) 다시 만들기</button>` : ""}
         <span class="muted small" id="part-count"></span>
       </div>
-      <span class="muted small">여러 편은 앞 편 줄거리를 이어받도록 순서대로 하나씩 만듭니다. ⤓ 표시는 회차를 받으면서 만듭니다.</span>` : `
+      <span class="muted small">✓ 만든 편을 누르면 그 편 화면으로 이동합니다. 안 만든 편을 골라 ‘선택한 편 대본 만들기’를 누르세요 (여러 편은 순서대로 하나씩). ⤓ 표시는 회차를 받으면서 만듭니다.</span>` : `
       <div class="acts">
         <select id="llm"><option value="auto">자동 (번갈아)</option><option value="claude">Claude</option><option value="gpt">GPT</option></select>
         <button class="btn ${p ? "" : "primary"}" id="btn-plan" ${busy || !it.inputs.length ? "disabled" : ""}>${p ? "다시 만들기" : "대본 만들기"}</button>
@@ -436,7 +442,8 @@ function renderDetail(it) {
       ${p ? `<span class="muted small">시리즈: ${it.part || 1}편 · ‘다음 편’은 다음 회차로 이어서 만들고, 회차가 없으면 공식 채널에서 받습니다.</span>` : ""}`}
       </div></div>
     <div class="step ${it.video ? "done" : ""}"><div class="n">3</div><div class="body">
-      <b>렌더 영상 만들기</b>
+      <b>렌더 영상 만들기${it.part ? ` · ${it.part}편` : ""}</b>
+      ${it.part ? `<span class="muted small">지금 보고 있는 ${esc(it.drama)} ${it.part}편을 렌더합니다. 다른 편은 위에서 그 편을 눌러 연 뒤 렌더하세요.</span>` : ""}
       <div class="acts">
         <select id="tts-engine">${ENGINES.map(([k, n]) => `<option value="${k}" ${(cfg.engines || {})[k] === false ? "disabled" : ""}>${n}${(cfg.engines || {})[k] === false ? " (키 없음)" : ""}</option>`).join("")}
           <option value="auto">자동 (되는 엔진 순서대로)</option></select>
@@ -521,6 +528,9 @@ function renderDetail(it) {
     b.classList.toggle("on", pickedParts.has(n));
     const list = [...pickedParts].sort((x, y) => x - y);
     $("#part-count").textContent = list.length ? `${list.join(", ")}편 · ${list.length}개 (편당 3~5분)` : "";
+  });
+  document.querySelectorAll("[data-open-part]").forEach(b => b.onclick = () => {
+    if (b.dataset.openPart !== it.name) select(b.dataset.openPart);
   });
   if ($("#btn-parts")) $("#btn-parts").onclick = () => {
     const list = [...pickedParts].sort((x, y) => x - y);
