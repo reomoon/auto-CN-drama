@@ -255,7 +255,9 @@ def plan_view(name):
 # ---------------- 라우트 ----------------
 @app.get("/")
 def index():
-    return send_file(WEB / "index.html")
+    r = send_file(WEB / "index.html")
+    r.headers["Cache-Control"] = "no-store"   # 서버를 고치면 바로 새 화면이 보이게
+    return r
 
 
 @app.get("/api/config")

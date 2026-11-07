@@ -391,8 +391,9 @@ function renderDetail(it) {
       <span class="muted small">${it.uploading ? "업로드 중입니다. PC에 열린 업로드 창을 확인하세요." :
         "auto-insta와 같은 계정(틱톡, 네이버 클립 다큐 계정)으로 올립니다. PC에 업로드 창이 열리고, 틱톡 퍼즐이 뜨면 그 창에서 직접 풀어야 합니다."}</span>` : ""}
       ${it.video ? `<div class="checks">
-        <label><input type="checkbox" data-st="tiktok" ${it.status.tiktok ? "checked" : ""}> 틱톡 업로드 ${it.status.tiktok ? `<small>${esc(it.status.tiktok)}</small>` : ""}</label>
-        <label><input type="checkbox" data-st="clip" ${it.status.clip ? "checked" : ""}> 네이버 클립 업로드 ${it.status.clip ? `<small>${esc(it.status.clip)}</small>` : ""}</label>
+        <span class="muted small" style="width:100%">업로드 기록 (위 버튼으로 올리면 자동 체크 · 앱에서 직접 올렸을 때만 손으로 체크)</span>
+        <label><input type="checkbox" data-st="tiktok" ${it.status.tiktok ? "checked" : ""}> 틱톡 올림 ${it.status.tiktok ? `<small>${esc(it.status.tiktok)}</small>` : ""}</label>
+        <label><input type="checkbox" data-st="clip" ${it.status.clip ? "checked" : ""}> 클립 올림 ${it.status.clip ? `<small>${esc(it.status.clip)}</small>` : ""}</label>
         <label><input type="checkbox" data-st="claim" ${it.status.claim ? "checked" : ""}> 저작권 신고 받음 ${it.status.claim ? `<small>${esc(it.status.claim)}</small>` : ""}</label>
       </div>` : ""}
     </div>` : "";
