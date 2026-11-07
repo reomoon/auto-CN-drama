@@ -268,6 +268,9 @@ def api_config():
 
 @app.get("/api/rank")
 def api_rank():
+    from .fetch import _norm
+    cats = sorted(config.DATA.glob("official_*.json"))
+    official = {_norm(x["title_zh"]) for x in _read(cats[-1], [])} if cats else set()
     out = {}
     for key, pat, prefix in (("short", "rank_short_*.json", "S"), ("long", "rank_2*.json", "D")):
         files = sorted(config.DATA.glob(pat))
@@ -279,8 +282,58 @@ def api_rank():
             folder = f"{prefix}{i:02d}_{planmod.slugify(x.get('title_ko') or x.get('title_zh', ''))}"
             x["folder"] = folder if (INPUT / folder).is_dir() else None
             x["stage"] = item(folder)["stage"] if x["folder"] else None
+            x["official"] = _norm(x.get("title_zh", "")) in official   # 공식 채널 카탈로그에 있으면 받을 수 있음
+            if x["folder"] and (INPUT / folder / "info.json").exists():
+                x["official"] = x["official"] or bool(_read(INPUT / folder / "info.json", {}).get("official"))
         out[key] = {"date": files[-1].stem.split("_")[-1], "items": data}
     return jsonify(out)
+
+
+THUMBS = config.DATA / "thumbs"
+_thumb_locks = {}
+
+
+@app.get("/thumb")
+def thumb():
+    """순위 카드 썸네일. v=유튜브 영상 ID 가 있으면 그 썸네일, 없으면 q=중국어 원제로 검색한 첫 영상 썸네일.
+    data/thumbs 에 저장해 두고 다시 쓴다."""
+    import hashlib
+
+    import requests
+    vid = (request.args.get("v") or "").strip()
+    q = (request.args.get("q") or "").strip()[:60]
+    if not (vid or q) or (vid and not re.fullmatch(r"[\w-]{6,20}", vid)):
+        abort(400)
+    key = hashlib.sha1((vid or q).encode()).hexdigest()[:16]
+    THUMBS.mkdir(parents=True, exist_ok=True)
+    img, none = THUMBS / f"{key}.jpg", THUMBS / f"{key}.none"
+    lock = _thumb_locks.setdefault(key, threading.Lock())
+    with lock:
+        if not img.exists() and not none.exists():
+            url = f"https://i.ytimg.com/vi/{vid}/hqdefault.jpg" if vid else None
+            try:
+                if not url:
+                    import yt_dlp
+                    with yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True, "extract_flat": True}) as y:
+                        ents = y.extract_info(f"ytsearch5:{q}", download=False).get("entries") or []
+                    from .fetch import _norm
+                    ent = next((e for e in ents if e and _norm(q) in _norm(e.get("title"))), None) \
+                        or next((e for e in ents if e), None)
+                    if ent:
+                        url = f"https://i.ytimg.com/vi/{ent['id']}/hqdefault.jpg"
+                if url:
+                    r = requests.get(url, timeout=15)
+                    if r.ok and len(r.content) > 2000:
+                        img.write_bytes(r.content)
+            except Exception:  # noqa: BLE001
+                pass
+            if not img.exists():
+                none.write_text("", encoding="utf-8")   # 못 찾음 — 다시 검색하지 않음
+    if not img.exists():
+        abort(404)
+    r = send_file(img, mimetype="image/jpeg", conditional=True)
+    r.headers["Cache-Control"] = "private, max-age=604800"
+    return r
 
 
 @app.get("/api/catalog")
@@ -480,9 +533,22 @@ def media(name):
     return send_file(p, mimetype="video/mp4", conditional=True)
 
 
+def _cleanup_loop():
+    """켜질 때, 그리고 6시간마다 다 올린 지 오래된 원본 회차를 지운다."""
+    from . import cleanup
+    while True:
+        try:
+            if not busy_targets():          # 작업 중에는 건너뛴다
+                cleanup.run(quiet=True)
+        except Exception as e:  # noqa: BLE001
+            print(f"[정리] 오류: {e}")
+        time.sleep(6 * 3600)
+
+
 def run(port=8700, lan=False, remote=False):
     host = "0.0.0.0" if lan else "127.0.0.1"
     print(f"대시보드: http://127.0.0.1:{port}")
+    threading.Thread(target=_cleanup_loop, daemon=True).start()
     if remote:
         if not config.DASHBOARD_PASSWORD:
             raise RuntimeError("원격 접속에는 .env 의 DASHBOARD_PASSWORD 가 필요합니다.")

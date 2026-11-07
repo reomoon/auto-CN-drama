@@ -86,6 +86,9 @@ def main():
     u.add_argument("--private", action="store_true", help="틱톡 '나만 보기'로 올리기")
     u.add_argument("--dry-run", action="store_true", help="틱톡: 게시 버튼 직전까지만")
 
+    c = sub.add_parser("cleanup", help="다 올린 지 오래된 원본 회차 지우기")
+    c.add_argument("--dry-run", action="store_true", help="지울 대상만 보여주기")
+
     d = sub.add_parser("render", help="plan.json → 영상")
     d.add_argument("workdir")
     d.add_argument("--tts", choices=TTS)
@@ -123,6 +126,9 @@ def main():
     elif a.cmd == "upload":
         from pipeline import upload
         upload.run(a.workdir, a.to, private=a.private, dry_run=a.dry_run)
+    elif a.cmd == "cleanup":
+        from pipeline import cleanup
+        cleanup.run(dry_run=a.dry_run)
     elif a.cmd == "render":
         render.run(a.workdir, tts_engine=a.tts)
     elif a.cmd == "make":

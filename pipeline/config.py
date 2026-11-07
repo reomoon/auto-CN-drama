@@ -60,6 +60,7 @@ NARR_ORIG_VOLUME = float(env("NARR_ORIG_VOLUME", "0.15"))  # 나레이션 중 �
 
 MAX_HASHTAGS = int(env("MAX_HASHTAGS", "3"))          # 해시태그 개수 (#중드 #작품명 + 1개)
 SERIES_SPLIT = int(env("SERIES_SPLIT", "2"))          # 회차 하나를 몇 편으로 나눌지 (2 = 1편 1화 전반, 2편 1화 후반 ...)
+CLEAN_AFTER_DAYS = float(env("CLEAN_AFTER_DAYS", "7"))  # 회차로 만든 편이 다 올라가고 이 기간이 지나면 원본 회차 삭제
 
 # --- 업로드 (auto-insta 의 업로드 코드·로그인 계정을 그대로 사용) ---
 AUTO_INSTA_DIR = env("AUTO_INSTA_DIR", r"C:\python\auto-insta")

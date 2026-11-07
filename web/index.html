@@ -51,7 +51,11 @@ main{max-width:1280px;margin:0 auto;padding:24px}
 .mono{font-family:var(--mono);font-size:12px}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:14px}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow)}
-.rank{padding:16px 16px 14px;display:flex;flex-direction:column;gap:8px}
+.rank{padding:0 0 14px;display:flex;flex-direction:column;gap:8px;overflow:hidden}
+.rank>*:not(.thumb){margin-left:16px;margin-right:16px}
+.rank .thumb{width:100%;aspect-ratio:16/9;object-fit:cover;display:block;background:var(--panel-2);border-bottom:1px solid var(--line)}
+.rank .thumb.none{display:none}
+.rank .thumb.none+.top{margin-top:16px}
 .rank .top{display:flex;gap:12px;align-items:flex-start}
 .rank .no{font-size:28px;font-weight:800;line-height:1;color:var(--accent);min-width:34px;font-variant-numeric:tabular-nums}
 .rank h3{margin:0;font-size:16px;line-height:1.35}
@@ -182,7 +186,7 @@ textarea.field{resize:vertical;min-height:62px}
 <main>
   <section id="tab-rank">
     <div class="toolbar">
-      <div class="seg" id="rankseg"><button data-k="official">공식 영상 있음</button><button data-k="short" class="on">숏드라마</button><button data-k="long">장편</button></div>
+      <div class="seg" id="rankseg"><button data-k="official" class="on">공식 영상 있음</button><button data-k="short">숏드라마 (참고)</button><button data-k="long">장편</button></div>
       <span class="muted small" id="rankdate"></span>
       <div class="spacer"></div>
       <button class="btn" id="btn-inbox">상위 10개 폴더 만들기</button>
@@ -214,7 +218,7 @@ const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt
 const STAGE = {empty:"영상 대기", ready:"영상 있음", plan:"대본 확인", video:"완성", uploaded:"업로드됨", claimed:"저작권 신고"};
 const chip = st => `<span class="chip ${st}">${STAGE[st] || "폴더 없음"}</span>`;
 const fmt = t => `${Math.floor(t / 60)}:${(t % 60).toFixed(1).padStart(4, "0")}`;
-const state = {tab: "rank", rankKind: "short", rank: null, items: [], sel: null, plan: null, edits: null, cfg: {}, jobs: []};
+const state = {tab: "rank", rankKind: "official", rank: null, items: [], sel: null, plan: null, edits: null, cfg: {}, jobs: []};
 
 async function api(path, opt = {}) {
   const r = await fetch(path, opt.body && !(opt.body instanceof FormData)
@@ -265,17 +269,28 @@ async function loadRank() {
   state.rank = {...rank, official: cat};
   renderRank();
 }
+const thumbImg = qs => `<img class="thumb" loading="lazy" alt="" src="/thumb?${qs}" onerror="this.classList.add('none')">`;
+const PICK_TIP = "1~2화를 먼저 받습니다. 3화부터는 작업 화면에서 '다음 편 만들기'를 누를 때 자동으로 받습니다.";
+function bindPick() {
+  document.querySelectorAll("[data-pick]").forEach(b => b.onclick = () => {
+    b.disabled = true; b.textContent = "가져오는 중…";
+    job({cmd: "pick", title_zh: b.dataset.pick, eps: "1-2"});
+  });
+}
 function renderOfficial(r) {
   const list = r.items.filter(x => x.kind !== "기타");
-  $("#rankdate").textContent = r.date ? `${r.date} 기준 · 공식 채널에 회차가 올라온 드라마 ${list.length}개 · 최근 업로드 순` : "";
+  $("#rankdate").textContent = r.date ? `${r.date} 기준 · 공식 채널에 회차가 올라온 드라마 ${list.length}개 · 최근 업로드 순 · `
+    + `‘작품 가져오기’는 1~2화를 받고, 3화부터는 ‘다음 편 만들기’ 때 자동으로 받습니다` : "";
   if (!list.length) { $("#rankgrid").innerHTML = `<div class="card emptystate">목록이 없습니다. ‘목록 새로고침’을 눌러주세요. (3~5분)</div>`; return; }
   $("#rankgrid").innerHTML = list.map((x, i) => {
     const heat = Array.from({length: 5}, (_, k) => `<b class="${k < (x.makjang || 0) ? "on" : ""}"></b>`).join("");
     const ch = (x.channel || "").split(" - Get")[0].split("-Get")[0];
     const e = x.eps || [];
     const act = x.folder ? `<button class="btn" data-open="${esc(x.folder)}">열기</button>`
-      : `<button class="btn primary" data-pick="${esc(x.title_zh)}">1~2화 가져오기</button>`;
+      : `<button class="btn primary" data-pick="${esc(x.title_zh)}" title="${PICK_TIP}">작품 가져오기</button>`;
+    const vid = (x.sample_url || "").match(/[?&]v=([\w-]+)/)?.[1];
     return `<article class="card rank">
+      ${thumbImg(vid ? `v=${encodeURIComponent(vid)}` : `q=${encodeURIComponent(x.title_zh)}`)}
       <div class="top"><div class="no">${i + 1}</div><div>
         <h3>${esc(x.title_ko || x.title_zh)}</h3><div class="zh">${esc(x.title_zh)}</div></div></div>
       <div class="meta"><span>${esc(ch)}</span>${x.genre ? `<span>${esc(x.genre)}</span>` : ""}<span>EP${e[0]}~${e[e.length - 1]} · ${e.length}개</span></div>
@@ -286,7 +301,7 @@ function renderOfficial(r) {
     </article>`;
   }).join("");
   document.querySelectorAll("[data-open]").forEach(b => b.onclick = () => { setTab("work"); select(b.dataset.open); });
-  document.querySelectorAll("[data-pick]").forEach(b => b.onclick = () => { b.disabled = true; job({cmd: "pick", title_zh: b.dataset.pick, eps: "1-2"}); });
+  bindPick();
 }
 function renderRank() {
   const official = state.rankKind === "official";
@@ -298,8 +313,11 @@ function renderRank() {
   if (!r || !r.items.length) { $("#rankgrid").innerHTML = `<div class="card emptystate">순위 데이터가 없습니다. ‘순위 새로고침’을 눌러주세요.</div>`; return; }
   $("#rankgrid").innerHTML = r.items.map(x => {
     const heat = Array.from({length: 5}, (_, i) => `<b class="${i < (x.makjang || 0) ? "on" : ""}"></b>`).join("");
-    const act = x.folder ? `<button class="btn" data-open="${esc(x.folder)}">열기</button>` : `<span class="muted small">폴더 없음</span>`;
+    const act = x.folder ? `<button class="btn" data-open="${esc(x.folder)}">열기</button>`
+      : x.official ? `<button class="btn primary" data-pick="${esc(x.title_zh)}" title="${PICK_TIP}">작품 가져오기</button>`
+      : `<span class="muted small">공식 영상 없음 · 직접 넣기만 가능</span>`;
     return `<article class="card rank">
+      ${thumbImg(`q=${encodeURIComponent(x.title_zh || x.title_ko)}`)}
       <div class="top"><div class="no">${esc(x.rank)}</div><div>
         <h3>${esc(x.title_ko)}</h3><div class="zh">${esc(x.title_zh)}</div></div></div>
       <div class="meta">${[x.platform, x.genre, x.episodes].filter(Boolean).map(v => `<span>${esc(v)}</span>`).join("")}</div>
@@ -310,6 +328,7 @@ function renderRank() {
     </article>`;
   }).join("");
   document.querySelectorAll("[data-open]").forEach(b => b.onclick = () => { setTab("work"); select(b.dataset.open); });
+  bindPick();
 }
 
 /* ---------- 작업 목록 ---------- */
