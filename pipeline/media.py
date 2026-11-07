@@ -76,6 +76,62 @@ def transcribe(src, cache):
     return out
 
 
+# ---------------- 본편 구간 (오프닝·엔딩 크레딧 제외) ----------------
+def story_range(src):
+    """(본편 시작, 본편 끝) 초. 회차 맨 끝(엔딩 크레딧) 화면과 색감이 같은 구간을 끝과 처음에서 찾아 뺀다.
+    결과는 영상 옆에 캐시한다."""
+    src = Path(src)
+    cache = config.WORK / "_transcripts" / f"{src.stem}_{src.stat().st_size}.range.json"
+    if cache.exists():
+        d = json.loads(cache.read_text(encoding="utf-8"))
+        return d["start"], d["end"]
+    import cv2
+    dur = duration(src)
+    cap = cv2.VideoCapture(str(src))
+
+    def hist(t):
+        cap.set(cv2.CAP_PROP_POS_MSEC, max(0.0, t) * 1000)
+        ok, f = cap.read()
+        if not ok:
+            return None
+        hsv = cv2.cvtColor(cv2.resize(f, (160, 90)), cv2.COLOR_BGR2HSV)
+        h = cv2.calcHist([hsv], [0, 1], None, [18, 8], [0, 180, 0, 256])
+        return cv2.normalize(h, h).flatten()
+
+    refs = [h for h in (hist(dur - k) for k in (3, 8, 13, 18)) if h is not None]
+    ref = np.mean(refs, axis=0).astype("float32") if refs else None
+
+    def is_credit(t):
+        h = hist(t)
+        return h is not None and ref is not None and cv2.compareHist(ref, h, cv2.HISTCMP_CORREL) > 0.6
+
+    end = dur
+    if ref is not None and is_credit(dur - 25):          # 끝이 크레딧이면 크레딧 시작점을 찾는다 (최대 6분)
+        t, miss = dur - 25, 0
+        while t > dur - 360:
+            t -= 4
+            if is_credit(t):
+                end, miss = t, 0
+            else:
+                miss += 1
+                if miss >= 3:
+                    break
+    start = 0.0
+    if ref is not None:                                  # 처음 4분 안의 같은 그림(오프닝 곡)
+        t = 0.0
+        while t < 240:
+            if is_credit(t):
+                start = t + 4
+            elif start and t - start > 12:
+                break
+            t += 4
+    cap.release()
+    cache.parent.mkdir(parents=True, exist_ok=True)
+    cache.write_text(json.dumps({"start": round(start, 1), "end": round(end, 1), "duration": round(dur, 1)}),
+                     encoding="utf-8")
+    return start, end
+
+
 # ---------------- 음량 분석 ----------------
 def energy_db(src, hop=0.5):
     if not probe(src)["has_audio"]:

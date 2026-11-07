@@ -36,14 +36,27 @@ def merge_fragments(segs, max_gap=0.7, max_chars=30):
     return out
 
 
-def load_lines(sources):
+def transcript(src):
+    """문장 단위로 합친 대사 (음성 인식 캐시 사용)."""
+    p = Path(src)
     tdir = config.WORK / "_transcripts"
     tdir.mkdir(parents=True, exist_ok=True)
+    return merge_fragments(media.transcribe(p, tdir / f"{slugify(p.stem)}_{p.stat().st_size}.json"))
+
+
+def load_lines(sources, windows=None):
+    """windows: {소스 번호: (시작, 끝)} — 회차를 여러 편으로 나눌 때 그 편의 구간만."""
     lines = []
     for si, src in enumerate(sources):
         p = Path(src)
-        cache = tdir / f"{slugify(p.stem)}_{p.stat().st_size}.json"
-        segs = media.add_energy(merge_fragments(media.transcribe(p, cache)), p)
+        segs = media.add_energy(transcript(p), p)
+        st, en = media.story_range(p)        # 오프닝 곡·엔딩 크레딧 구간 대사는 빼기
+        if windows and si in windows:
+            st, en = max(st, windows[si][0]), min(en, windows[si][1])
+        before = len(segs)
+        segs = [s for s in segs if st <= s["start"] and s["end"] <= en]
+        if before - len(segs):
+            print(f"    이번 편 구간 {fmt(st)}~{fmt(en)} 대사 {len(segs)}개 사용 (오프닝·크레딧·다른 편 구간 제외)")
         for s in segs:
             lines.append({"id": f"L{len(lines) + 1}", "src": si, **s})
     return lines
@@ -98,6 +111,14 @@ PROMPT = """너는 중국 막장 드라마 숏폼(틱톡·네이버 클립) 해�
    원본 장면이 나레이션 내용을 직접 보여주게 연결한다.
 5. 나레이션 항목의 화면(from)은 나레이션이 말하는 내용과 같은 장면에서 고른다.
 
+### 썸네일 (틱톡·클립은 첫 화면이 썸네일이 된다)
+- "cover"에 이 회차에서 **가장 자극적인 장면**의 대사ID를 고른다: 뺨 때리기, 오열, 고성 대립, 충격받은 얼굴,
+  배신이 드러나는 순간 등 (⚡음량이 높은 대사가 후보). 첫 항목(훅)은 이 장면 위에 나레이션이 깔린다.
+- overlay_title(상단 고정 제목)은 썸네일 제목이다. 스크롤을 멈추게 하는 충격·분노·반전 키워드로 짧고 세게.
+  예) ["남편과 가정부가 숨긴", "소름 돋는 진짜 관계"], ["남편의 두 집 살림", "아내가 다 알고 있었다"]
+- title(업로드 제목)도 같은 세기로: 예) "남편과 가정부가 숨긴 소름 돋는 진짜 관계"
+  밋밋한 요약("남편의 거짓말", "아내의 반격 시작")이 아니라, 무엇이 충격적인지 구체적으로 드러내되 결말은 숨긴다.
+
 ### 해설 채널로서의 기준 (공정 이용)
 줄거리를 옮기는 영상이 아니라 **내 해석·비평·감상이 중심인 해설 영상**이어야 한다.
 - 나레이션 항목마다 role을 붙인다: "설명"(상황·관계 소개) 또는 "해석"(인물 속마음 추측, 전개·연출 평가,
@@ -121,6 +142,7 @@ PROMPT = """너는 중국 막장 드라마 숏폼(틱톡·네이버 클립) 해�
 {series}JSON만 출력하라:
 {{
  "story": "이 영상이 따라가는 핵심 갈등 한 문장",
+ "cover": "썸네일로 쓸 가장 자극적인 장면의 대사ID (예: L240)",
  "recap": "이번 편까지의 전체 줄거리 2문장 (다음 편 작성용)",
  "cliff": "마지막에 남긴 다음 편 떡밥 한 문장",
  "title": "업로드 제목 (30자 이내, 궁금증 유발)",
@@ -131,7 +153,7 @@ PROMPT = """너는 중국 막장 드라마 숏폼(틱톡·네이버 클립) 해�
  ],
  "opinion": "이 영상에서 말한 내 의견 한 줄 요약",
  "caption": "업로드 본문 (2~3문장, 마지막에 질문)",
- "hashtags": ["#중드", "#중국드라마", "...총 6~10개"]
+ "hashtags": ["#중드", "#작품명", "#이 영상에 가장 알맞은 태그 1개 (예: #복수극, #막장드라마)"]
 }}"""
 
 
@@ -226,6 +248,8 @@ def make_validator(by_id):
             narr_total += nsec
         if not (tl[0].get("narration") or "").strip():
             errs.append("첫 항목은 나레이션 훅이어야 함")
+        if p.get("cover") and p["cover"] not in by_id:
+            errs.append(f"cover 대사ID({p['cover']})가 목록에 없음")
         if not (tl[-1].get("narration") or "").strip():
             errs.append("마지막 항목은 나레이션(의견)이어야 함")
         if not errs:
@@ -348,6 +372,10 @@ def series_text(series):
     n = series["part"]
     s = [f"### 시리즈 {n}편 (중요)",
          f"이 영상은 '{n}편'이다. 시청자가 다음 편을 기다리게 만드는 연재물로 쓴다."]
+    if series.get("split", 1) > 1:
+        half = ["전반", "후반"][series["piece"]] if series["split"] == 2 else f"{series['piece'] + 1}번째 부분"
+        s.append(f"이번 편은 {series['eps'][0]}화의 {half}만 다룬다 (아래 대사가 그 구간이다). "
+                 f"한 회차를 여러 편으로 나눴으니 장면 하나하나를 서두르지 말고 충분히 설명한다.")
     if series.get("prev"):
         s.append("지난 편까지의 내용:")
         s += [f"- {p['part']}편: {p.get('recap') or p.get('story')}"
@@ -362,6 +390,18 @@ def series_text(series):
     return "\n".join(s) + "\n"
 
 
+def normalize_tags(tags, drama, n=None):
+    """해시태그는 n개(기본 3)만: #중드 #작품명 + 대본이 고른 가장 알맞은 태그 하나."""
+    n = n or config.MAX_HASHTAGS
+    base = ["#중드", "#" + drama.replace(" ", "")]
+    rest = [t if t.startswith("#") else "#" + t for t in (tags or [])]
+    rest = [t.replace(" ", "") for t in rest if t.replace(" ", "") not in base
+            and not re.fullmatch(r"#(중국드라마|중드|숏폼드라마|숏폼|쇼츠|드라마해설)", t.replace(" ", ""))
+            and not re.search(r"\d+편$", t)
+            and not (re.search(r"[一-鿿]", t) and not re.search(r"[가-힣]", t))]   # 중국어 원제 태그 제외
+    return list(dict.fromkeys(base + rest))[:n]
+
+
 def info_text(info):
     if not info:
         return ""
@@ -370,7 +410,7 @@ def info_text(info):
     return "".join(f"{k}: {v}\n" for k, v in rows if v)
 
 
-def run(drama, videos, engine="auto", name=None, tts_engine=None, info=None, series=None):
+def run(drama, videos, engine="auto", name=None, tts_engine=None, info=None, series=None, windows=None):
     videos = [str(Path(v).resolve()) for v in videos]
     for v in videos:
         if not Path(v).exists():
@@ -378,7 +418,8 @@ def run(drama, videos, engine="auto", name=None, tts_engine=None, info=None, ser
     wdir = config.WORK / slugify(name or drama)
     wdir.mkdir(parents=True, exist_ok=True)
 
-    src_total = sum(media.duration(v) for v in videos)
+    src_total = sum((windows[i][1] - windows[i][0]) if windows and i in windows else media.duration(v)
+                    for i, v in enumerate(videos))
     allowed = src_total * config.MAX_SOURCE_RATIO
     if allowed < config.TARGET_MIN_SEC:
         need = config.TARGET_MIN_SEC / config.MAX_SOURCE_RATIO / 60
@@ -387,7 +428,7 @@ def run(drama, videos, engine="auto", name=None, tts_engine=None, info=None, ser
                            f"(합계 {need:.0f}분 이상).")
 
     print(f"[1/3] 대사 추출 ({len(videos)}개 영상)")
-    lines = load_lines(videos)
+    lines = load_lines(videos, windows)
     if not lines:
         raise RuntimeError("대사를 하나도 인식하지 못했습니다. 영상에 음성이 있는지 확인하세요.")
     by_id = {ln["id"]: ln for ln in lines}
@@ -410,11 +451,11 @@ def run(drama, videos, engine="auto", name=None, tts_engine=None, info=None, ser
     print(f"  · 줄거리: {plan.get('story', '')}")
     translate(plan, by_id, used, drama, info)
     if series:
-        plan["series"] = {k: series[k] for k in ("base", "part", "eps")}
+        plan["series"] = {k: series[k] for k in ("base", "part", "eps", "piece", "split") if k in series}
         tag = f"[{drama} {series['part']}편]"
         if not plan.get("title", "").startswith("["):
             plan["title"] = f"{tag} {plan.get('title', '')}".strip()
-        plan["hashtags"] = list(dict.fromkeys((plan.get("hashtags") or []) + [f"#{drama.replace(' ', '')}{series['part']}편"]))
+    plan["hashtags"] = normalize_tags(plan.get("hashtags"), drama)
     plan.update({"drama": drama, "engine": used, "sources": videos, "_source_total": round(src_total, 1),
                  "_source_ratio": round(plan["_est_total"] / src_total, 4),
                  "credits": [{"ep": o["ep"], "channel": o["channel"], "url": o["url"]}

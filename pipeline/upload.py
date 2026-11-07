@@ -30,7 +30,8 @@ def upload_text(plan):
     if credits:
         ch = credits[0]["channel"].split(" - Get")[0].split("-Get")[0].strip()
         src = f"\n원본: 〈{plan['drama']}〉 {ch} 공식 채널"
-    tags = " ".join(plan.get("hashtags") or [])
+    from .plan import normalize_tags
+    tags = " ".join(normalize_tags(plan.get("hashtags"), plan["drama"]))
     return f"{plan.get('title', '').strip()}\n{plan.get('caption', '').strip()}{src}\n\n{tags}".strip()
 
 

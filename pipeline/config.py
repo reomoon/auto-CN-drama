@@ -45,7 +45,7 @@ TEMPLATE = env("TEMPLATE", "bold")                   # bold(굵은 제목 + 큰 
 TITLE_FONT = env("TITLE_FONT", "Black Han Sans")     # bold 템플릿 글꼴 (fonts 폴더에 포함)
 BOLD_ZOOM = float(env("BOLD_ZOOM", "1.8"))            # bold 템플릿 최소 확대 (클수록 양옆을 더 자르고 크게)
 BOLD_FILL = float(env("BOLD_FILL", "0.75"))           # 제목 아래 영역을 이 비율 이상 채우도록 자동 확대
-BOLD_MAX_ZOOM = float(env("BOLD_MAX_ZOOM", "2.6"))    # 자동 확대 상한
+BOLD_MAX_ZOOM = float(env("BOLD_MAX_ZOOM", "2.2"))    # 자동 확대 상한 (너무 키우면 흐려짐)
 BOLD_TITLE1 = env("BOLD_TITLE1", "neon")              # bold 제목 1줄 색 (노랑)
 BOLD_TITLE2 = env("BOLD_TITLE2", "green")             # bold 제목 2줄 색 (형광 초록)
 BOLD_NARR = env("BOLD_NARR", "neon")                  # bold 해설 자막 색
@@ -57,6 +57,9 @@ NARR_COLOR = env("NARR_COLOR", "yellow")              # 나레이션 자막 색
 FONT = env("FONT", "Malgun Gothic")
 SUB_MARGIN_V = int(env("SUB_MARGIN_V", "470"))        # 자막 아래 여백(px). 틱톡 하단 UI 피하기
 NARR_ORIG_VOLUME = float(env("NARR_ORIG_VOLUME", "0.15"))  # 나레이션 중 원본 볼륨
+
+MAX_HASHTAGS = int(env("MAX_HASHTAGS", "3"))          # 해시태그 개수 (#중드 #작품명 + 1개)
+SERIES_SPLIT = int(env("SERIES_SPLIT", "2"))          # 회차 하나를 몇 편으로 나눌지 (2 = 1편 1화 전반, 2편 1화 후반 ...)
 
 # --- 업로드 (auto-insta 의 업로드 코드·로그인 계정을 그대로 사용) ---
 AUTO_INSTA_DIR = env("AUTO_INSTA_DIR", r"C:\python\auto-insta")

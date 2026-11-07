@@ -213,6 +213,43 @@ def face_center(src, start, seg):
     return float(sum(x * a for x, a in pts) / sum(a for _, a in pts))
 
 
+def pick_cover(src, t0, t1, step=0.4):
+    """t0~t1 사이에서 썸네일로 쓸 순간을 고른다: 얼굴이 크고 초점이 선명한 프레임.
+    (틱톡·클립은 영상 첫 화면이 썸네일이 된다)"""
+    global _detector
+    import cv2
+    cap = cv2.VideoCapture(src)
+    best, best_t = -1.0, t0
+    t = t0
+    while t <= t1:
+        cap.set(cv2.CAP_PROP_POS_MSEC, t * 1000)
+        ok, frame = cap.read()
+        if not ok:
+            break
+        h, w = frame.shape[:2]
+        W, H = 640, max(1, int(h * 640 / w))
+        small = cv2.resize(frame, (W, H))
+        gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
+        box, area = None, 0.0
+        if FACE_MODEL.exists():
+            if _detector is None:
+                _detector = cv2.FaceDetectorYN.create(str(FACE_MODEL), "", (W, H), 0.7)
+            _detector.setInputSize((W, H))
+            _, faces = _detector.detect(small)
+            if faces is not None and len(faces):
+                f = max(faces, key=lambda r: r[2] * r[3])
+                x, y, fw, fh = (int(max(0, v)) for v in f[:4])
+                box, area = gray[y:y + fh, x:x + fw], fw * fh / (W * H)
+        region = box if box is not None and box.size > 400 else gray[H // 4: 3 * H // 4, W // 4: 3 * W // 4]
+        sharp = float(cv2.Laplacian(region, cv2.CV_64F).var())
+        score = sharp * (1 + 6 * min(area, 0.25)) * (1.0 if box is not None else 0.4)
+        if score > best:
+            best, best_t = score, t
+        t += step
+    cap.release()
+    return best_t
+
+
 def _duck_expr(seg, ramp_in, ramp_out):
     """나레이션 동안 원음을 줄인다. 원본 구간과 맞닿는 쪽은 부드럽게 줄였다 키운다."""
     v, f = config.NARR_ORIG_VOLUME, min(config.DUCK_FADE, seg / 3)
@@ -237,7 +274,9 @@ def render_segment(src, has_audio, start, seg, narr_mp3, out, lay, ramp_in=False
     if ws > 1080 + 8:   # 양옆을 자를 때는 얼굴이 가운데 오도록
         cx = face_center(src, start, seg)
         crop_x = str(int(min(ws - 1080, max(0, cx * ws - 540))))
-    fg = f"scale={ws}:-2,crop='min(iw,1080)':'min(ih,{lay['max_h']})':{crop_x}:'(ih-oh)/2'"
+    sharpen = ",unsharp=5:5:0.6:5:5:0.0" if ws > 1080 + 8 else ""
+    fg = (f"scale={ws}:-2:flags=lanczos,crop='min(iw,1080)':'min(ih,{lay['max_h']})':{crop_x}:'(ih-oh)/2'"
+          f"{sharpen}")
     if config.BG_STYLE == "blur" and lay["template"] == "classic":
         fc = (f"[0:v]fps=30,split=2[v1][v2];"
               f"[v1]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,gblur=sigma=40,"
@@ -291,7 +330,36 @@ def run(wdir, tts_engine=None):
             mp3 = tts.synth(narr, wdir / "tts", engine=tts_engine)
             nd = media.duration(mp3)
             tts.record(narr, nd, engine=tts_engine)
+        if i == 1 and narr:
+            # 첫 화면 = 썸네일: 대본이 고른 가장 자극적인 장면(cover) 근처에서 얼굴이 크고 선명한 순간부터 시작
+            cv = by_id.get(plan.get("cover") or "")
+            picked_by_plan = bool(cv)
+            if not cv:   # 대본에 썸네일 장면이 없으면: 대본에 쓴 장면 중 가장 격한(음량 최고) 대사
+                used = [by_id[f"L{n}"] for t in tl for n in range(int(t["from"][1:]), int(t["to"][1:]) + 1)
+                        if f"L{n}" in by_id]
+                cv = max(used, key=lambda x: x.get("energy", 0)) if used else None
+            if cv:
+                src, sdur = sources[cv["src"]], info[sources[cv["src"]]]["duration"]
+                t0, t1 = max(0.0, cv["start"] - 1.0), min(sdur, cv["end"] + 3.0)
+            else:
+                t0, t1 = start, min(sdur, start + 12.0)
+            s_st, s_en = media.story_range(src)
+            t0, t1 = max(t0, s_st), min(t1, s_en - 1)
+            if t1 <= t0:
+                t0, t1 = s_st, min(s_en - 1, s_st + 12.0)
+            start = max(0.0, pick_cover(src, t0, t1) - 0.05)
+            print(f"  · 썸네일(첫 화면): {int(start // 60)}:{start % 60:04.1f} "
+                  + ("(대본이 고른 장면)" if picked_by_plan else "(가장 격한 장면 근처, 선명한 얼굴)"))
         seg = nd + 0.5 if narr else clip
+        # 오프닝 곡·엔딩 크레딧 위에 나레이션이 깔리지 않게 본편 안으로 옮긴다
+        s_st, s_en = media.story_range(src)
+        if narr and (start + seg > s_en or start < s_st):
+            moved = min(max(start, s_st), max(s_st, s_en - seg - 0.3))
+            print(f"  · [{i}] 나레이션 화면이 크레딧에 걸려 {int(moved // 60)}:{moved % 60:04.1f}로 옮김")
+            start = moved
+        elif not narr and start >= s_en:
+            print(f"  · [{i}] 크레딧 구간 원본 장면 제외")
+            continue
         if start + seg > sdur:
             start = max(0.0, sdur - seg)
             seg = min(seg, sdur)
@@ -368,7 +436,8 @@ def run(wdir, tts_engine=None):
                   "-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-movflags", "+faststart",
                   str(video.resolve())], cwd=rdir)
 
-    tags = " ".join(plan.get("hashtags") or [])
+    from .plan import normalize_tags
+    tags = " ".join(normalize_tags(plan.get("hashtags"), plan["drama"]))
     post = (f"[제목]\n{plan.get('title', '')}\n\n[틱톡 캡션]\n{plan.get('caption', '')}\n\n{tags}\n\n"
             f"[네이버 클립 설명]\n{plan.get('title', '')}\n{plan.get('caption', '')}\n\n{tags}\n\n"
             f"[출처 표기]\n드라마: {plan['drama']}\n" +

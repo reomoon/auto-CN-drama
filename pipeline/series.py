@@ -39,6 +39,27 @@ def _episode_file(base, ep):
     return None
 
 
+def split_points(src, n):
+    """회차 본편을 n편으로 나눌 경계. 등분 지점 ±8% 안에서 대사가 가장 길게 끊기는 곳(장면 전환)."""
+    from . import media
+    st, en = media.story_range(src)
+    lines = [x for x in plan.transcript(src) if st <= x["start"] and x["end"] <= en]
+    cuts = [st]
+    for k in range(1, n):
+        target = st + (en - st) * k / n
+        lo, hi = target - (en - st) * 0.08, target + (en - st) * 0.08
+        gaps = [((b["start"] - a["end"]), (a["end"] + b["start"]) / 2)
+                for a, b in zip(lines, lines[1:]) if lo <= a["end"] and b["start"] <= hi]
+        cuts.append(max(gaps)[1] if gaps else target)
+    return cuts + [en]
+
+
+def episode_part(part):
+    """N편 → (회차, 회차 안의 몇 번째 조각 0부터)."""
+    n = max(1, config.SERIES_SPLIT)
+    return (part - 1) // n + 1, (part - 1) % n
+
+
 def make(base, part=None, engine="auto", tts_engine=None, eps=None):
     d = INPUT / base
     if not d.is_dir():
@@ -46,7 +67,8 @@ def make(base, part=None, engine="auto", tts_engine=None, eps=None):
     info = json.loads((d / "info.json").read_text(encoding="utf-8")) if (d / "info.json").exists() else {}
     done = parts(base)
     part = part or (max([p for p, _ in done], default=0) + 1)
-    eps = eps or [part]
+    ep, piece = episode_part(part)
+    eps = eps or [ep]
 
     files = []
     for ep in eps:
@@ -64,7 +86,13 @@ def make(base, part=None, engine="auto", tts_engine=None, eps=None):
     prev = [{"part": p, "story": pl.get("story", ""), "recap": pl.get("recap", ""), "cliff": pl.get("cliff", "")}
             for p, pl in done if p < part]
     drama = info.get("title_ko") or base
-    print(f"=== {drama} {part}편 ({', '.join(f.name for f in files)}) ===")
+    windows, where = None, ""
+    n = max(1, config.SERIES_SPLIT)
+    if n > 1 and len(files) == 1:
+        cuts = split_points(files[0], n)
+        windows = {0: (cuts[piece], cuts[piece + 1])}
+        where = f" {['전반', '후반'][piece] if n == 2 else f'{piece + 1}/{n}'} {plan.fmt(cuts[piece])}~{plan.fmt(cuts[piece + 1])}"
+    print(f"=== {drama} {part}편 ({', '.join(f.name for f in files)}{where}) ===")
     return plan.run(drama, [str(f) for f in files], engine=engine, name=part_dir(base, part).name,
-                    tts_engine=tts_engine, info=info,
-                    series={"base": base, "part": part, "eps": eps, "prev": prev})
+                    tts_engine=tts_engine, info=info, windows=windows,
+                    series={"base": base, "part": part, "eps": eps, "piece": piece, "split": n, "prev": prev})
