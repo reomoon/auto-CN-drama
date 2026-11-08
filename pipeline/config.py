@@ -64,6 +64,7 @@ TARGET_MAX_SEC = float(env("TARGET_MAX_SEC", "86"))
 TEMPLATE = env("TEMPLATE", "bold")                   # bold(굵은 제목 + 큰 화면) | classic(가운데 화면 + 위아래 여백)
 TITLE_FONT = env("TITLE_FONT", "Black Han Sans")     # bold 템플릿 글꼴 (fonts 폴더에 포함: Black Han Sans, Pretendard Black)
 BOLD_ZOOM = float(env("BOLD_ZOOM", "1.8"))            # bold 템플릿 최소 확대 (클수록 양옆을 더 자르고 크게)
+BOLD_SHIFT = int(env("BOLD_SHIFT", "180"))            # bold 템플릿 제목·영상을 아래로 내리는 정도(px). 틱톡·클립 상단 UI(프로필·탭)에 제목이 가리지 않게
 BOLD_FILL = float(env("BOLD_FILL", "0.75"))           # 제목 아래 영역을 이 비율 이상 채우도록 자동 확대
 BOLD_MAX_ZOOM = float(env("BOLD_MAX_ZOOM", "2.2"))    # 자동 확대 상한 (너무 키우면 흐려짐)
 BOLD_TITLE1 = env("BOLD_TITLE1", "neon")              # bold 제목 1줄 색 (노랑)

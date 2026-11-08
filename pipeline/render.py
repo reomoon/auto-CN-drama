@@ -65,7 +65,7 @@ def ass_color(name):
 
 
 # ---------------- 레이아웃 ----------------
-BOLD_TOP = 450   # bold 템플릿: 제목 띠 높이
+BOLD_TOP = 450 + config.BOLD_SHIFT   # bold 템플릿: 제목 띠 높이 (앱 상단 UI만큼 내림)
 
 
 def layout(width, height):
@@ -80,7 +80,7 @@ def layout(width, height):
         dlg = min(bottom - 28, 1540)              # 대사 자막: 영상 맨 아래 한 줄 고정
         narr = dlg - 150                          # 해설 자막: 대사 자리보다 위
         return {"template": "bold", "zoom": z, "pad_y": BOLD_TOP, "max_h": 1920 - BOLD_TOP,
-                "title_y": (218, 362), "label_y": BOLD_TOP - 14,   # 제목 2줄, 〈작품명〉 ep 라벨
+                "title_y": (218 + config.BOLD_SHIFT, 362 + config.BOLD_SHIFT), "label_y": BOLD_TOP - 14,   # 제목 2줄, 〈작품명〉 ep 라벨
                 "dialog_v": int(1920 - dlg), "narr_align": 2, "narr_v": int(1920 - narr)}
 
     z = 1.0 if vertical else config.FG_ZOOM
