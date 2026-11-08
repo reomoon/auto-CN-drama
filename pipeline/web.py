@@ -330,7 +330,8 @@ def api_config():
     return jsonify({"eleven": bool(config.ELEVEN_KEY and config.ELEVEN_VOICE), "tts": config.TTS_ENGINE,
                     "engines": {p: tts.available(p) for p in ("elevenlabs", "typecast", "gemini", "google")},
                     "voices": tts.voices(), "default_voice": tts.DEFAULT_VOICE,
-                    "min": config.TARGET_MIN_SEC, "max": config.MAX_SEC})
+                    "min": config.TARGET_MIN_SEC, "max": config.MAX_SEC,
+                    "clip_tags": config.CLIP_TAGS.split()})
 
 
 @app.get("/api/rank")

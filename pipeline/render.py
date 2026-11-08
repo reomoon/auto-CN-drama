@@ -529,9 +529,11 @@ def run(wdir, tts_engine=None, voice=None):
                   str(video.resolve())], cwd=rdir)
 
     from .plan import normalize_tags
-    tags = " ".join(normalize_tags(plan.get("hashtags"), plan["drama"]))
+    from .upload import clip_tags
+    tag_list = normalize_tags(plan.get("hashtags"), plan["drama"])
+    tags, ctags = " ".join(tag_list), " ".join(clip_tags(tag_list))   # 클립에만 #오늘클립챌린지 등
     post = (f"[제목]\n{plan.get('title', '')}\n\n[틱톡 캡션]\n{plan.get('caption', '')}\n\n{tags}\n\n"
-            f"[네이버 클립 설명]\n{plan.get('title', '')}\n{plan.get('caption', '')}\n\n{tags}\n\n"
+            f"[네이버 클립 설명]\n{plan.get('title', '')}\n{plan.get('caption', '')}\n\n{ctags}\n\n"
             f"[출처 표기]\n드라마: {plan['drama']}\n" +
             "".join(f"원본 {c['ep']}화: {c['channel']} 공식 채널 {c['url']}\n" for c in plan.get("credits") or []))
     (odir / "post.txt").write_text(post, encoding="utf-8")

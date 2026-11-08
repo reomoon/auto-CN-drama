@@ -486,10 +486,13 @@ function renderDetail(it) {
       ${cfg.eleven ? "" : `<span class="muted small">‘렌더 영상 만들기’는 .env에 ElevenLabs 키와 Voice ID를 넣으면 켜집니다.</span>`}
     </div></div>`;
   const tags = p ? p.hashtags.join(" ") : "";
+  const clipTags = (cfg.clip_tags || []).filter(t => p && !p.hashtags.includes(t));   // 네이버 클립에만 붙는 태그
+  const clipTagStr = [tags, ...clipTags].filter(Boolean).join(" ");
   const upload = p ? `
     <div class="card box ${stepCls(4)}" id="uploadbox"><h4>업로드 문구</h4>
       <div class="copyrow"><span class="label">제목</span><span class="val">${esc(p.title)}</span><button class="btn ghost" data-copy="title">복사</button></div>
-      <div class="copyrow"><span class="label">캡션</span><span class="val">${esc(p.caption)}\n${esc(tags)}</span><button class="btn ghost" data-copy="caption">복사</button></div>
+      <div class="copyrow"><span class="label">캡션</span><span class="val">${esc(p.caption)}\n${esc(tags)}</span><button class="btn ghost" data-copy="caption">틱톡용 복사</button></div>
+      ${clipTags.length ? `<div class="copyrow"><span class="label">클립</span><span class="val">${esc(p.caption)}\n${esc(clipTagStr)}</span><button class="btn ghost" data-copy="clip">클립용 복사</button></div>` : ""}
       ${it.video ? `<div class="acts" style="margin-top:10px">
         <button class="btn primary" data-up="tiktok" ${it.uploading || it.status.claim ? "disabled" : ""}>틱톡에 올리기</button>
         <button class="btn primary" data-up="clip" ${it.uploading || it.status.claim ? "disabled" : ""}>클립에 올리기</button>
@@ -600,7 +603,7 @@ function renderDetail(it) {
   $("#btn-prev").onclick = () => renderJob(it.name, "edge");
   $("#btn-final").onclick = () => renderJob(it.name, engSel.value, voiceSel.hidden ? "" : voiceSel.value);
   document.querySelectorAll("[data-copy]").forEach(b => b.onclick = () =>
-    copy(b.dataset.copy === "title" ? p.title : `${p.caption}\n\n${tags}`));
+    copy(b.dataset.copy === "title" ? p.title : b.dataset.copy === "clip" ? `${p.caption}\n\n${clipTagStr}` : `${p.caption}\n\n${tags}`));
   document.querySelectorAll("[data-up]").forEach(b => b.onclick = () => {
     const kind = b.dataset.up, dry = kind === "tiktok-dry", to = dry ? "tiktok" : kind;
     const priv = to === "tiktok" && $("#tt-private")?.checked;

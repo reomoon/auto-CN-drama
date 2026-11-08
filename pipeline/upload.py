@@ -23,15 +23,22 @@ def _auto_insta():
     return d, py
 
 
-def upload_text(plan):
-    """설명: 제목 + 캡션 + 출처 + 해시태그."""
+def clip_tags(tags):
+    """네이버 클립 전용 해시태그(CLIP_TAGS)를 뒤에 붙인다 (이미 있으면 그대로)."""
+    extra = [t for t in config.CLIP_TAGS.split() if t and t not in tags]
+    return tags + extra
+
+
+def upload_text(plan, to=None):
+    """설명: 제목 + 캡션 + 출처 + 해시태그. 네이버 클립이면 클립 전용 태그를 더한다."""
     credits = plan.get("credits") or []
     src = ""
     if credits:
         ch = credits[0]["channel"].split(" - Get")[0].split("-Get")[0].strip()
         src = f"\n원본: 〈{plan['drama']}〉 {ch} 공식 채널"
     from .plan import normalize_tags
-    tags = " ".join(normalize_tags(plan.get("hashtags"), plan["drama"]))
+    tags = normalize_tags(plan.get("hashtags"), plan["drama"])
+    tags = " ".join(clip_tags(tags) if to == "clip" else tags)
     return f"{plan.get('title', '').strip()}\n{plan.get('caption', '').strip()}{src}\n\n{tags}".strip()
 
 
@@ -47,7 +54,7 @@ def run(wdir, to, private=False, dry_run=False):
     d, py = _auto_insta()
 
     tmp = Path(tempfile.mkdtemp(prefix="cn_upload_"))
-    req = {"platform": to, "video": str(video.resolve()), "text": upload_text(plan), "private": private,
+    req = {"platform": to, "video": str(video.resolve()), "text": upload_text(plan, to), "private": private,
            "dry_run": dry_run, "ai_label": config.UPLOAD_AI_LABEL, "clip_account": config.CLIP_ACCOUNT,
            "clip_category": config.CLIP_CATEGORY, "result": str(tmp / "result.json")}
     (tmp / "req.json").write_text(json.dumps(req, ensure_ascii=False), encoding="utf-8")
