@@ -74,6 +74,7 @@ DUCK_FADE = float(env("DUCK_FADE", "0.35"))           # 나레이션 시작·끝
 COVER_SHOCK_WEIGHT = float(env("COVER_SHOCK_WEIGHT", "5"))  # 썸네일: 놀란 표정 가중치 (0 = 표정 무시, 클수록 놀란 얼굴 우선)
 COVER_SECONDS = float(env("COVER_SECONDS", "1.0"))   # 맨 앞 표지(썸네일 장면 + 제목만, 자막 없음) 길이 — 틱톡·클립 썸네일이 된다
 NARR_FONT_SIZE = int(env("NARR_FONT_SIZE", "104"))    # bold 템플릿 노란 해설 자막 크기
+DIALOG_BOX = env("DIALOG_BOX", "gray")                # 흰 대사 자막 뒤 상자: gray(반투명 회색 둥근 상자, auto-insta 쇼츠와 같음) | none
 DIALOG_FONT_SIZE = int(env("DIALOG_FONT_SIZE", "74")) # bold 템플릿 흰 대사 자막 크기
 FG_ZOOM = float(env("FG_ZOOM", "1.5"))                # classic 템플릿 가로 영상 확대 비율
 BG_STYLE = env("BG_STYLE", "black")                   # black(검은 여백) | blur(흐린 배경)

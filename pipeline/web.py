@@ -626,6 +626,28 @@ def api_upload(name):
     return jsonify(item(name))
 
 
+@app.post("/api/inputs/<base>/delete")
+def api_inputs_delete(base):
+    """원본 회차 파일 지우기 (대시보드 '원본 삭제'). 대본·완성 영상·음성 인식 결과는 남긴다."""
+    base = _name(base)
+    if base in busy_targets():
+        abort(409, "이 작품은 작업 중이라 지금은 지울 수 없습니다")
+    d = INPUT / base
+    have = {v.name: v for v in _videos(d)} if d.is_dir() else {}
+    names = [str(x) for x in ((request.get_json(force=True) or {}).get("files") or [])]
+    bad = [x for x in names if x not in have]
+    if not names or bad:
+        abort(400, f"지울 원본을 고르세요{' (없는 파일: ' + ', '.join(bad) + ')' if bad else ''}")
+    freed = 0
+    for x in names:
+        freed += have[x].stat().st_size
+        have[x].unlink()
+    with open(config.DATA / "cleanup.log", "a", encoding="utf-8") as log:
+        log.write(f"{time.strftime('%Y-%m-%d %H:%M')} 대시보드에서 삭제 {base}: {', '.join(names)} "
+                  f"({freed / 2**20:.0f}MB)\n")
+    return jsonify({"deleted": names, "mb": round(freed / 2**20)})
+
+
 @app.post("/api/job")
 def api_job():
     b = request.get_json(force=True) or {}

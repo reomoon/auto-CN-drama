@@ -123,6 +123,52 @@ def _title_size(text, base, width=1000):
     return int(min(base, width / (n * 0.98)))
 
 
+# 흰 대사 자막 뒤 반투명 회색 둥근 상자 (auto-insta 쇼츠 자막의 gray 스타일과 같은 색·여백·모서리)
+BOX_RGB, BOX_ALPHA = (90, 90, 90), 200            # 불투명도 200/255
+BOX_PAD_X, BOX_PAD_Y, BOX_RADIUS = 28, 16, 18
+_fonts = {}
+
+
+def _font_for(name, size):
+    """ASS 글자 크기(줄 높이 기준) → 같은 크기의 PIL 글꼴. fonts 폴더에 없는 글꼴이면 None."""
+    from PIL import ImageFont
+    files = {"Black Han Sans": "BlackHanSans-Regular.ttf", "Pretendard Black": "Pretendard-Black.otf"}
+    path = config.ROOT / "fonts" / files.get(name, "-")
+    if name not in files or not path.exists():
+        return None
+    key = (name, size)
+    if key not in _fonts:
+        probe = ImageFont.truetype(str(path), size)
+        asc, desc = probe.getmetrics()
+        _fonts[key] = ImageFont.truetype(str(path), max(1, round(size * size / (asc + desc))))
+    return _fonts[key]
+
+
+def _round_rect(w, h, r):
+    """ASS 그림 명령: (0,0)~(w,h) 둥근 사각형."""
+    k = r * 0.45
+    return (f"m {r} 0 l {w - r} 0 b {w - k:.1f} 0 {w} {k:.1f} {w} {r} l {w} {h - r} "
+            f"b {w} {h - k:.1f} {w - k:.1f} {h} {w - r} {h} l {r} {h} b {k:.1f} {h} 0 {h - k:.1f} 0 {h - r} "
+            f"l 0 {r} b 0 {k:.1f} {k:.1f} 0 {r} 0")
+
+
+def dialog_box(text, font_name, size, bottom, outline=2):
+    """대사 한 컷(줄바꿈 포함) 뒤에 깔 둥근 상자 이벤트 텍스트. 글꼴을 못 재면 None.
+    bottom: 자막 맨 아랫줄 바닥 y (an2 기준점)."""
+    font = _font_for(font_name, size)
+    if font is None:
+        return None
+    rows = text.split("\\N")
+    tw = max(font.getlength(r) for r in rows) + outline * 2
+    th = size * len(rows)
+    w, h = round(tw + BOX_PAD_X * 2), round(th + BOX_PAD_Y * 2 - size * 0.18)
+    x0, y0 = round(540 - w / 2), round(bottom - th + size * 0.1 - BOX_PAD_Y)
+    a = f"{255 - BOX_ALPHA:02X}"
+    c = f"{BOX_RGB[2]:02X}{BOX_RGB[1]:02X}{BOX_RGB[0]:02X}"
+    return ("{\\an7\\pos(%d,%d)\\bord0\\shad0\\1c&H%s&\\1a&H%s&\\p1}%s{\\p0}"
+            % (x0, y0, c, a, _round_rect(w, h, BOX_RADIUS)))
+
+
 def build_ass(events, overlay, total, path, lay=None, label=None):
     lay = lay or layout(1920, 1080)
     dlg_v, narr_v = lay["dialog_v"], lay["narr_v"]
@@ -135,9 +181,12 @@ def build_ass(events, overlay, total, path, lay=None, label=None):
             f"Style: Title2,{f},136,{t2},{t2},&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,5,0,2,20,20,0,1\n"
             f"Style: Label,{f},50,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,3,0,1,44,44,0,1\n"
             f"Style: Narr,{f},{config.NARR_FONT_SIZE},{narr_c},{narr_c},&H00000000,&H64000000,0,0,0,0,100,100,0,0,1,10,3,2,70,70,{narr_v},1\n"
-            f"Style: Dialog,{f},{config.DIALOG_FONT_SIZE},&H00FFFFFF,&H00FFFFFF,&H00000000,&H78000000,0,0,0,0,100,100,0,0,1,6,2,2,50,50,{dlg_v},1\n")
+            + (f"Style: Dialog,{f},{config.DIALOG_FONT_SIZE},&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,0,2,50,50,{dlg_v},1\n"
+               if config.DIALOG_BOX == "gray" else   # 상자가 있으면 테두리는 얇게
+               f"Style: Dialog,{f},{config.DIALOG_FONT_SIZE},&H00FFFFFF,&H00FFFFFF,&H00000000,&H78000000,0,0,0,0,100,100,0,0,1,6,2,2,50,50,{dlg_v},1\n"))
         wrap_w = {"Narr": 9, "Dialog": 13}
         base = 136
+        dlg_font, dlg_size = f, config.DIALOG_FONT_SIZE
     else:
         f = config.FONT
         narr_c, t2_c = ass_color(config.NARR_COLOR), ass_color(config.TITLE2_COLOR)
@@ -149,6 +198,7 @@ def build_ass(events, overlay, total, path, lay=None, label=None):
             f"Style: Dialog,{f},70,&H00FFFFFF,&H00FFFFFF,&H00000000,&HA0000000,-1,0,0,0,100,100,0,0,1,5,2,2,70,70,{dlg_v},1\n")
         wrap_w = {"Narr": 12, "Dialog": 13}
         base = 96
+        dlg_font, dlg_size = f, 70
     head = ("[Script Info]\nScriptType: v4.00+\nPlayResX: 1080\nPlayResY: 1920\nWrapStyle: 2\n"
             "ScaledBorderAndShadow: yes\n\n[V4+ Styles]\n"
             "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, "
@@ -168,8 +218,12 @@ def build_ass(events, overlay, total, path, lay=None, label=None):
                     f"{{\\an1\\pos(60,{lay['label_y']:.0f})}}{ass_text(label)}")
     for st, en, style, text in events:
         if en - st > 0.05:
-            rows.append(f"Dialogue: 0,{ass_time(st)},{ass_time(en)},{style},,0,0,0,,"
-                        f"{wrap(ass_text(text), wrap_w[style])}")
+            body = wrap(ass_text(text), wrap_w[style])
+            box = (dialog_box(body, dlg_font, dlg_size, 1920 - dlg_v)
+                   if style == "Dialog" and config.DIALOG_BOX == "gray" else None)
+            if box:                                   # 상자(아래 층) + 글자(위 층)
+                rows.append(f"Dialogue: 0,{ass_time(st)},{ass_time(en)},Dialog,,0,0,0,,{box}")
+            rows.append(f"Dialogue: 1,{ass_time(st)},{ass_time(en)},{style},,0,0,0,,{body}")
     Path(path).write_text(head + "\n".join(rows) + "\n", encoding="utf-8")
 
 

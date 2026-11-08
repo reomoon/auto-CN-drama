@@ -152,6 +152,12 @@ main{max-width:1280px;margin:0 auto;padding:24px}
 @keyframes flash{0%,60%{box-shadow:0 0 0 3px var(--info)}100%{box-shadow:none}}
 .topts{display:flex;flex-direction:column;gap:6px;align-items:flex-start}
 .ep.made.on{background:var(--accent-strong);border-color:var(--accent-ink);color:var(--accent-ink);font-weight:700}
+.stephead{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.btn.small{padding:4px 11px;font-size:12px}
+.btn.danger{background:var(--danger);border-color:var(--danger);color:#fff}
+.btn.danger:disabled{opacity:.45;cursor:default}
+.fdel{border:1px dashed var(--danger);background:var(--panel);color:var(--text);border-radius:6px;padding:2px 9px;font-size:13px;cursor:pointer}
+.fdel.on{background:var(--danger-soft);border-style:solid;color:var(--danger);font-weight:700;text-decoration:line-through}
 .files span{background:var(--panel-2);border:1px solid var(--line);border-radius:6px;padding:1px 8px}
 select{border:1px solid var(--line);background:var(--panel);border-radius:10px;padding:6px 8px}
 .copyrow{display:flex;gap:8px;align-items:flex-start;padding:8px 0;border-top:1px solid var(--line)}
@@ -410,7 +416,14 @@ function renderDetail(it) {
     ? `<video id="vid" src="${it.video}#t=0.3" controls playsinline preload="metadata"></video>`
     : `<div class="empty">${busy ? "작업 중…" : it.stage === "plan" ? "대본이 준비됐습니다.<br>확인 후 렌더하세요." : "아직 영상이 없습니다."}</div>`;
   const epName = n => { const m = n.match(/^EP0*(\d+)\./i); return m ? `${m[1]}화` : n; };
-  const files = it.inputs.length ? `<div class="files">${it.inputs.map(f => `<span>${esc(epName(f.name))} · ${f.mb}MB</span>`).join("")}</div>` : "";
+  const delMode = state.delMode === it.name && it.inputs.length && it.has_input_dir;   // 원본 삭제 고르는 중
+  const files = !it.inputs.length ? "" : delMode
+    ? `<div class="files">${it.inputs.map(f => `<button class="fdel" data-del="${esc(f.name)}">${esc(epName(f.name))} · ${f.mb}MB</button>`).join("")}</div>
+       <div class="acts"><button class="btn danger" id="btn-del-go" disabled>선택한 원본 삭제</button>
+         <button class="btn ghost" id="btn-del-cancel">취소</button><span class="muted small" id="del-count">지울 회차를 눌러 고르세요</span></div>`
+    : `<div class="files">${it.inputs.map(f => `<span>${esc(epName(f.name))} · ${f.mb}MB</span>`).join("")}</div>`;
+  const delBtn = it.inputs.length && it.has_input_dir && !delMode
+    ? `<button class="btn ghost small" id="btn-del" ${busy ? "disabled" : ""} title="받아 둔 원본 회차 파일을 골라서 지웁니다">원본 삭제</button>` : "";
   const offEps = it.official_eps || [], haveEps = new Set(it.have_eps || []);
   const epPicker = offEps.length ? `<div class="eps" id="eppick">${offEps.map(e => haveEps.has(e)
       ? `<button class="ep have" disabled title="받음">✓ ${e}화</button>`
@@ -433,7 +446,7 @@ function renderDetail(it) {
   const stepCls = n => (ns && ns.n === n ? "next" : "");
   const steps = `
     <div class="step ${it.inputs.length || p ? "done" : ""} ${stepCls(1)}" id="step1"><div class="n">1</div><div class="body">
-      <b>원본 영상</b>${files}
+      <div class="stephead"><b>원본 영상</b>${delBtn}</div>${files}
       ${it.info?.title_zh && it.has_input_dir && offEps.length ? `${epPicker}
         <span class="muted small">공식 채널에 올라온 회차 ${offEps.length}개 · 인증된 플랫폼 공식 채널 영상만 받습니다 · 회차당 약 0.5GB</span>` : ""}
       ${it.info?.title_zh && it.has_input_dir && !offEps.length ? `<div class="acts">
@@ -535,6 +548,29 @@ function renderDetail(it) {
     drop.ondragleave = () => drop.classList.remove("over");
     drop.ondrop = e => { e.preventDefault(); drop.classList.remove("over"); uploadFiles(it.name, e.dataTransfer.files); };
   }
+  // 원본 삭제: 버튼 → 회차 고르기 → 확인 후 삭제
+  if ($("#btn-del")) $("#btn-del").onclick = () => { state.delMode = it.name; renderDetail(it); };
+  if ($("#btn-del-cancel")) $("#btn-del-cancel").onclick = () => { state.delMode = null; renderDetail(it); };
+  const delPicked = new Set();
+  document.querySelectorAll("[data-del]").forEach(b => b.onclick = () => {
+    const f = b.dataset.del;
+    delPicked.has(f) ? delPicked.delete(f) : delPicked.add(f);
+    b.classList.toggle("on", delPicked.has(f));
+    const mb = it.inputs.filter(x => delPicked.has(x.name)).reduce((s, x) => s + x.mb, 0);
+    $("#del-count").textContent = delPicked.size ? `${delPicked.size}개 · ${mb >= 1024 ? (mb / 1024).toFixed(1) + "GB" : mb + "MB"} 비움` : "지울 회차를 눌러 고르세요";
+    $("#btn-del-go").disabled = !delPicked.size;
+  });
+  if ($("#btn-del-go")) $("#btn-del-go").onclick = async () => {
+    const list = [...delPicked];
+    const names = list.map(epName).join(", ");
+    if (!confirm(`${names} 원본 파일을 삭제할까요?\n\n대본·완성 영상은 남지만, 이 회차로 만든 편을 다시 렌더하거나 새 편을 만들려면 회차를 다시 받아야 합니다.`)) return;
+    try {
+      const r = await api(`/api/inputs/${encodeURIComponent(it.base || it.name)}/delete`, {method: "POST", body: {files: list}});
+      toast(`${names} 삭제했습니다 (${r.mb}MB 비움)`);
+      state.delMode = null;
+      await loadItems(); select(it.name);
+    } catch (e) { toast(e.message); }
+  };
   const picked = new Set();
   document.querySelectorAll("[data-ep]").forEach(b => b.onclick = () => {
     const e = +b.dataset.ep;
