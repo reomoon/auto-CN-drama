@@ -199,7 +199,8 @@ def item(name):
     else:
         stage = "empty"
     return {
-        "name": name, "base": base, "part": ser.get("part") or (1 if p else None),
+        "name": name, "base": base, "part": ser["part"] if "part" in ser else (1 if p else None),
+        "part_label": ("인트로" if ser.get("part") == 0 else f"{ser['part']}편") if "part" in ser else ("1편" if p else None),
         "drama": (p or {}).get("drama") or info.get("title_ko") or re.sub(r"^[A-Z]\d+_", "", name).replace("_", " "),
         "info": info,
         "inputs": [{"name": v.name, "mb": round(v.stat().st_size / 2**20)} for v in vids],
@@ -230,6 +231,16 @@ def _parts_list(base, have, official_eps):
     if nxt:
         eps.append(nxt)
     out = []
+    if have:      # 1편 앞에 올리는 예고편 (받은 회차에서 인물 소개 + 재미있는 장면)
+        d = ser.part_dir(base, ser.INTRO).name
+        st = _read(config.OUT / d / "status.json", {})
+        status = ("업로드됨" if (st.get("tiktok") or st.get("clip")) else
+                  "완성" if (config.OUT / d / f"{d}.mp4").exists() else
+                  "대본" if ser.INTRO in done else None)
+        use = sorted(have)[:ser.INTRO_MAX_EPS]
+        out.append({"n": ser.INTRO, "ep": None, "label": "인트로",
+                    "tip": f"인트로(예고편): 등장인물 소개 + 줄거리 예고 · {use[0]}~{use[-1]}화에서 재미있는 장면만",
+                    "status": status, "dir": d, "fetch": False})
     for ep in eps:
         for k in range(n):
             num = (ep - 1) * n + k + 1
@@ -239,7 +250,8 @@ def _parts_list(base, have, official_eps):
                       "완성" if (config.OUT / d / f"{d}.mp4").exists() else
                       "대본" if num in done else None)
             half = (["전반", "후반"][k] if n == 2 else f"{k + 1}/{n}") if n > 1 else "전체"
-            out.append({"n": num, "ep": ep, "label": f"{num}편 · {ep}화 {half}", "status": status,
+            out.append({"n": num, "ep": ep, "label": f"{ep}-{k + 1}" if n > 1 else f"{ep}화",
+                        "tip": f"{num}편 · {ep}화 {half}", "status": status,
                         "dir": d, "fetch": ep not in have})
     return out
 
@@ -655,7 +667,7 @@ def api_job():
     elif cmd == "series_parts":
         base = _name(name)
         llm = b.get("llm") if b.get("llm") in ("claude", "gpt") else "auto"
-        nums = sorted({int(x) for x in (b.get("parts") or []) if str(x).isdigit() and 0 < int(x) < 1000})
+        nums = sorted({int(x) for x in (b.get("parts") or []) if str(x).isdigit() and 0 <= int(x) < 1000})
         if not nums:
             abort(400, "만들 편을 고르세요")
         from . import series as ser
@@ -666,7 +678,7 @@ def api_job():
             def before(w=w):
                 if (w / "plan.json").exists():
                     (w / "plan.json").replace(w / "plan_prev.json")
-            jobs.append(JOBS.add(f"{num}편 대본 만들기 · {base}", ["series", base, "--part", str(num), "--llm", llm],
+            jobs.append(JOBS.add(f"{ser.part_name(num)} 대본 만들기 · {base}", ["series", base, "--part", str(num), "--llm", llm],
                                  target=base, before=before))
         return jsonify(jobs[-1])
     elif cmd == "series":

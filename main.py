@@ -61,7 +61,7 @@ def main():
 
     se = sub.add_parser("series", help="시리즈 다음 편 만들기 (N편 = N화)")
     se.add_argument("base", help="input 폴더 이름 (예: D05_미인여)")
-    se.add_argument("--part", type=int, help="만들 편 번호 (기본: 다음 편)")
+    se.add_argument("--part", type=int, help="만들 편 번호 (기본: 다음 편, 0 = 예고편: 등장인물 소개 + 줄거리 예고)")
     se.add_argument("--llm", default="auto", choices=LLM)
     se.add_argument("--tts", choices=TTS)
     se.add_argument("--render", action="store_true", help="대본 다음 바로 렌더")

@@ -3,6 +3,7 @@
 - N편은 기본으로 N화를 쓴다 (없으면 공식 채널에서 받는다).
 - 앞 편들의 줄거리와 '다음 편 예고'를 대본 프롬프트에 넣어, 이야기를 이어가고 같은 내용을 반복하지 않는다.
 - 작업 폴더: 1편 = work/<폴더>, 2편부터 = work/<폴더>_2편 ...
+- 0편 = 예고편(work/<폴더>_예고편): 1편 앞에 올리는 등장인물 소개 + 큰 줄거리 예고. 받은 회차(최대 3개)에서 가장 재미있는 장면만 고른다.
 """
 import json
 
@@ -10,7 +11,17 @@ from . import config, plan
 from .batch import INPUT, _videos
 
 
+INTRO = 0                 # 예고편 편 번호
+INTRO_MAX_EPS = 3         # 예고편에 쓸 최대 회차 수
+
+
+def part_name(part):
+    return "예고편" if part == INTRO else f"{part}편"
+
+
 def part_dir(base, part):
+    if part == INTRO:
+        return config.WORK / f"{base}_예고편"
     return config.WORK / (base if part == 1 else f"{base}_{part}편")
 
 
@@ -66,9 +77,16 @@ def make(base, part=None, engine="auto", tts_engine=None, eps=None):
         raise FileNotFoundError(f"input\\{base} 폴더가 없습니다.")
     info = json.loads((d / "info.json").read_text(encoding="utf-8")) if (d / "info.json").exists() else {}
     done = parts(base)
-    part = part or (max([p for p, _ in done], default=0) + 1)
-    ep, piece = episode_part(part)
-    eps = eps or [ep]
+    if part is None:
+        part = max([p for p, _ in done], default=0) + 1
+    if part == INTRO:
+        piece = 0
+        if not eps:
+            have = sorted(e for e in range(1, 200) if _episode_file(base, e))
+            eps = have[:INTRO_MAX_EPS] or [1, 2]
+    else:
+        ep, piece = episode_part(part)
+        eps = eps or [ep]
 
     files = []
     for ep in eps:
@@ -84,15 +102,15 @@ def make(base, part=None, engine="auto", tts_engine=None, eps=None):
         files.append(f)
 
     prev = [{"part": p, "story": pl.get("story", ""), "recap": pl.get("recap", ""), "cliff": pl.get("cliff", "")}
-            for p, pl in done if p < part]
+            for p, pl in done if INTRO < p < part]      # 예고편은 이어받지 않는다
     drama = info.get("title_ko") or base
     windows, where = None, ""
     n = max(1, config.SERIES_SPLIT)
-    if n > 1 and len(files) == 1:
+    if n > 1 and len(files) == 1 and part != INTRO:
         cuts = split_points(files[0], n)
         windows = {0: (cuts[piece], cuts[piece + 1])}
         where = f" {['전반', '후반'][piece] if n == 2 else f'{piece + 1}/{n}'} {plan.fmt(cuts[piece])}~{plan.fmt(cuts[piece + 1])}"
-    print(f"=== {drama} {part}편 ({', '.join(f.name for f in files)}{where}) ===")
+    print(f"=== {drama} {part_name(part)} ({', '.join(f.name for f in files)}{where}) ===")
     hot = ""
     try:
         from . import research

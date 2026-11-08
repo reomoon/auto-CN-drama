@@ -90,6 +90,33 @@ def item_seconds(item, by_id):
     return b["end"] - a["start"] + 0.4, 0.0
 
 
+STORY_RULES = """### 이야기 구성 (가장 중요)
+시청자는 이 드라마를 처음 본다. 끝까지 보면 "누가, 무슨 일을 당했고, 어떻게 되는지"가 한 줄기 이야기로 이해돼야 한다.
+1. 먼저 대사 전체를 읽고 이 영상이 따라갈 **핵심 갈등 하나**를 정해 "story" 필드에 한 문장으로 적는다.
+   (쇼츠 포인트가 주어졌으면 그것을 우선한다.) 그 갈등과 상관없는 곁가지 장면은 넣지 않는다.
+2. 흐름: ①훅(가장 충격적인 사실 예고) → ②인물 관계와 상황 소개 → ③사건 전개 → ④반전·절정 → ⑤내 의견 + 질문
+3. 첫 항목(훅)을 뺀 나머지 항목은 **원본 시간 순서대로** 배치한다.
+4. 원본 항목 바로 앞의 나레이션은 그 장면을 이해하는 데 필요한 정보(누가 누구에게 왜)를 미리 알려준다.
+   원본 장면이 나레이션 내용을 직접 보여주게 연결한다.
+5. 나레이션 항목의 화면(from)은 나레이션이 말하는 내용과 같은 장면에서 고른다.
+"""
+
+INTRO_RULES = """### 예고편 구성 (가장 중요)
+이 영상은 1편보다 먼저 올리는 **예고편**이다. 시청자는 이 드라마를 처음 본다. 이 영상만 보고
+"누가 나오고, 어떤 일이 벌어지는 드라마인지" 알게 되고, 1편부터 이어서 보고 싶어져야 한다.
+아래 대사는 앞 회차 여러 개(s0=1화, s1=2화 ...)에서 가져왔다. 전부 따라가지 말고 **가장 재미있는 장면만** 골라 엮는다.
+1. "story"에는 이 드라마 전체를 끌고 가는 핵심 갈등 한 문장(누가 누구에게 무엇을)을 적는다.
+2. 흐름: ①훅(이 드라마에서 가장 충격적인 설정 한 방) → ②주요 인물 3~4명 소개 → ③큰 줄거리(갈등이 어디로 향하는지)
+   → ④가장 자극적인 장면 몰아보기 → ⑤내 의견 + 질문 + "1편에서 처음부터 풀어드립니다" 같은 1편 유도
+3. 인물 소개: 인물마다 나레이션 한 항목("이 여자가 ○○입니다. 겉으로는 ~, 사실은 ~")을 쓰고,
+   그 화면(from)은 **그 인물이 말하는 대사**에서 고른다. 소개 직후 그 인물의 성격이 드러나는 원본 대사를 짧게 붙이면 좋다.
+4. 몰아보기: 뺨·고성·오열·배신이 드러나는 순간 등 ⚡음량이 높은 원본 대사 2~4개를 짧게(2~5초) 이어 붙인다.
+   각 원본 앞뒤에는 "그리고 이 사람이 무너집니다" 같은 짧은 연결 나레이션만 둔다.
+5. 회차와 시간 순서는 지키지 않아도 된다. 재미있는 순서로 배치한다.
+6. 결말과 반전의 답은 말하지 않는다. "과연 ~일까요?"처럼 궁금증만 남긴다. 대사에 없는 사건을 지어내지 않는다.
+"""
+
+
 PROMPT = """너는 중국 막장 드라마 숏폼(틱톡·네이버 클립) 해설 채널의 작가다.
 드라마: {drama}
 {info}드라마에 대해 아는 정보는 활용하되, 아래 대사와 어긋나면 대사를 따른다.
@@ -104,16 +131,7 @@ PROMPT = """너는 중국 막장 드라마 숏폼(틱톡·네이버 클립) 해�
 {min_s:.0f}~{max_s:.0f}초 분량의 세로 숏폼 한 편을 구성하라.
 타임라인 항목 하나 = 원본 영상의 한 구간(from 대사 시작 ~ to 대사 끝).
 
-### 이야기 구성 (가장 중요)
-시청자는 이 드라마를 처음 본다. 끝까지 보면 "누가, 무슨 일을 당했고, 어떻게 되는지"가 한 줄기 이야기로 이해돼야 한다.
-1. 먼저 대사 전체를 읽고 이 영상이 따라갈 **핵심 갈등 하나**를 정해 "story" 필드에 한 문장으로 적는다.
-   (쇼츠 포인트가 주어졌으면 그것을 우선한다.) 그 갈등과 상관없는 곁가지 장면은 넣지 않는다.
-2. 흐름: ①훅(가장 충격적인 사실 예고) → ②인물 관계와 상황 소개 → ③사건 전개 → ④반전·절정 → ⑤내 의견 + 질문
-3. 첫 항목(훅)을 뺀 나머지 항목은 **원본 시간 순서대로** 배치한다.
-4. 원본 항목 바로 앞의 나레이션은 그 장면을 이해하는 데 필요한 정보(누가 누구에게 왜)를 미리 알려준다.
-   원본 장면이 나레이션 내용을 직접 보여주게 연결한다.
-5. 나레이션 항목의 화면(from)은 나레이션이 말하는 내용과 같은 장면에서 고른다.
-
+{compose}
 ### 썸네일 (틱톡·클립은 첫 화면이 썸네일이 된다)
 - "cover"에 이 회차에서 **가장 자극적인 장면**의 대사ID를 고른다: 뺨 때리기, 오열, 고성 대립, 충격받은 얼굴,
   배신이 드러나는 순간 등 (⚡음량이 높은 대사가 후보). 첫 항목(훅)은 이 장면 위에 나레이션이 깔린다.
@@ -231,7 +249,7 @@ def _too_few_lines(by_id):
     return len(by_id) < 40
 
 
-def make_validator(by_id):
+def make_validator(by_id, ordered=True):
     def validate(p):
         errs = []
         for k in ("title", "timeline", "caption", "hashtags"):
@@ -264,7 +282,7 @@ def make_validator(by_id):
             errs.append(f"cover 대사ID({p['cover']})가 목록에 없음")
         if not (tl[-1].get("narration") or "").strip():
             errs.append("마지막 항목은 나레이션(의견)이어야 함")
-        if not errs:
+        if not errs and ordered:
             keys = [(by_id[it["from"]]["src"], by_id[it["from"]]["start"]) for it in tl[1:]]
             back = [i + 2 for i in range(1, len(keys))
                     if keys[i][0] < keys[i - 1][0] or (keys[i][0] == keys[i - 1][0] and keys[i][1] < keys[i - 1][1] - 1)]
@@ -425,6 +443,15 @@ def series_text(series):
     if not series:
         return ""
     n = series["part"]
+    if n == 0:
+        eps = ", ".join(f"{e}화" for e in series.get("eps") or [])
+        return "\n".join([
+            "### 시리즈 예고편 (중요)",
+            f"이 영상은 1편 앞에 올리는 '예고편'이다. 아래 대사는 {eps}에서 가져왔다.",
+            "- 마지막 나레이션: 내 의견 + 질문 다음에, 1편을 보러 가게 만드는 한 마디로 끝낸다.",
+            "  예) \"이 집의 비밀, 1편에서 처음부터 풀어드립니다.\"",
+            "- \"cliff\"에는 1편으로 넘기는 떡밥 한 문장을 적는다.",
+            "- title은 \"[{드라마명} 예고편]\"으로 시작한다.", ""]) + "\n"
     s = [f"### 시리즈 {n}편 (중요)",
          f"이 영상은 '{n}편'이다. 시청자가 다음 편을 기다리게 만드는 연재물로 쓴다."]
     if series.get("split", 1) > 1:
@@ -498,12 +525,13 @@ def run(drama, videos, engine="auto", name=None, tts_engine=None, info=None, ser
     text = "\n".join(f"{x['id']} [s{x['src']} {fmt(x['start'])}-{fmt(x['end'])} ⚡{x['energy']}] {x['text']}"
                      for x in shown)
     style = (config.PROMPTS / "style.txt").read_text(encoding="utf-8")
-    prompt = PROMPT.format(drama=drama, info=info_text(info), style=style, lines=text, cps=NARR_CPS,
+    intro = bool(series and series.get("part") == 0)
+    prompt = PROMPT.format(compose=INTRO_RULES if intro else STORY_RULES, drama=drama, info=info_text(info), style=style, lines=text, cps=NARR_CPS,
                            series=series_text(series), hot=hot or "",
                            min_s=config.TARGET_MIN_SEC, max_s=config.TARGET_MAX_SEC,
                            orig_lo=round((1 - config.NARR_RATIO_MAX) * 100),
                            orig_hi=round((1 - config.NARR_RATIO_MIN) * 100), min_analysis=config.MIN_ANALYSIS)
-    plan, used = llm.generate_json(prompt, engine=eng, validate=make_validator(by_id),
+    plan, used = llm.generate_json(prompt, engine=eng, validate=make_validator(by_id, ordered=not intro),
                                    label="하이라이트 고르고 대본 쓰는 중")
     print(f"  · 줄거리: {plan.get('story', '')}")
     translate(plan, by_id, used, drama, info)
@@ -519,7 +547,7 @@ def run(drama, videos, engine="auto", name=None, tts_engine=None, info=None, ser
         print(f"  ! 제목 후보 뽑기 실패 (대본 제목 사용): {e}")
     if series:
         plan["series"] = {k: series[k] for k in ("base", "part", "eps", "piece", "split") if k in series}
-        tag = f"[{drama} {series['part']}편]"
+        tag = f"[{drama} {'예고편' if intro else str(series['part']) + '편'}]"
         if not plan.get("title", "").startswith("["):
             plan["title"] = f"{tag} {plan.get('title', '')}".strip()
     plan["hashtags"] = normalize_tags(plan.get("hashtags"), drama)

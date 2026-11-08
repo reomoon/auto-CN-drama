@@ -100,8 +100,8 @@ def layout(width, height):
 def episode_label(plan, bold=False):
     if bold:
         part = (plan.get("series") or {}).get("part")
-        if part:
-            return f"〈{plan['drama']}〉 {part}편"
+        if part is not None:
+            return f"〈{plan['drama']}〉 {'예고편' if part == 0 else f'{part}편'}"
         base = episode_label(plan)
         name, _, ep = base.partition("  | ")
         return f"〈{name}〉" + (f" {ep}" if ep else "")

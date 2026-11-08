@@ -26,7 +26,7 @@ button,input,textarea,select{font:inherit;color:inherit}
 a{color:var(--info)}
 header{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:20px;padding:12px 24px;
   background:var(--panel);border-bottom:1px solid var(--line)}
-.brand{font-weight:800;letter-spacing:-.02em;display:flex;align-items:center;gap:8px;white-space:nowrap}
+.brand{color:inherit;text-decoration:none;cursor:pointer;font-weight:800;letter-spacing:-.02em;display:flex;align-items:center;gap:8px;white-space:nowrap}
 .brand i{width:22px;height:22px;border-radius:6px;background:var(--accent);display:inline-grid;place-items:center;
   color:var(--accent-ink);font-style:normal;font-size:12px}
 nav{display:flex;gap:4px}
@@ -127,6 +127,7 @@ main{max-width:1280px;margin:0 auto;padding:24px}
 .box h4{margin:0 0 10px;font-size:14px;display:flex;justify-content:space-between;align-items:center;gap:8px}
 .step{display:flex;gap:12px;padding:10px 0;border-top:1px solid var(--line)}
 .step:first-of-type{border-top:0;padding-top:0}
+.ep .eye{vertical-align:-3px;margin-left:5px}
 .step .n{width:24px;height:24px;border-radius:50%;display:grid;place-items:center;font-size:12px;font-weight:800;
   background:var(--panel-2);border:1px solid var(--line);flex:none}
 .step.done .n{background:var(--accent-strong);color:var(--accent-ink);border-color:var(--accent-line)}
@@ -216,7 +217,7 @@ textarea.field{resize:vertical;min-height:62px}
 </head>
 <body>
 <header>
-  <div class="brand"><i>中</i><span>중드 숏폼 스튜디오</span></div>
+  <a class="brand" href="#rank" id="home" title="홈 (순위)"><i>中</i><span>중드 숏폼 스튜디오</span></a>
   <nav><button data-tab="rank" class="on">순위</button><button data-tab="work">작업</button></nav>
   <div class="spacer"></div>
   <button class="jobpill" id="jobpill"><span class="dot" id="jobdot"></span><span id="jobtext">작업 없음</span></button>
@@ -282,6 +283,7 @@ async function job(body) {
 
 /* ---------- 탭 ---------- */
 document.querySelectorAll("nav button").forEach(b => b.onclick = () => setTab(b.dataset.tab));
+$("#home").onclick = e => { e.preventDefault(); setTab("rank"); window.scrollTo({top: 0}); };
 function setTab(t) {
   state.tab = t;
   document.querySelectorAll("nav button").forEach(b => b.classList.toggle("on", b.dataset.tab === t));
@@ -378,12 +380,14 @@ $("#btn-new").onclick = async () => {
   try { const it = await api("/api/folder", {method: "POST", body: {drama}}); await loadItems(); select(it.name); }
   catch (e) { toast(e.message); }
 };
+const EYE = `<svg class="eye" viewBox="0 0 24 24" width="15" height="15" aria-label="보는 중" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>`;
+const partName = n => (n === 0 ? "인트로" : `${n}편`);
 async function loadItems() { state.items = await api("/api/items"); renderItems(); }
 function renderItems() {
   const q = $("#q").value.trim();
   const list = state.items.filter(x => !q || (x.drama + x.name).includes(q));
   $("#items").innerHTML = list.map(x => `<div class="li ${x.name === state.sel ? "on" : ""}" data-n="${esc(x.name)}">
-      <div class="row"><span class="t">${esc(x.drama)}${x.part ? ` <span class="muted small">${x.part}편</span>` : ""}</span>${x.busy ? `<span class="dot run"></span>` : chip(x.stage)}</div>
+      <div class="row"><span class="t">${esc(x.drama)}${x.part_label ? ` <span class="muted small">${x.part_label}</span>` : ""}</span>${x.busy ? `<span class="dot run"></span>` : chip(x.stage)}</div>
       <span class="mono muted">${esc(x.name)}</span></div>`).join("") || `<div class="emptystate small">없음</div>`;
   document.querySelectorAll(".li").forEach(el => el.onclick = () => select(el.dataset.n));
 }
@@ -444,31 +448,31 @@ function renderDetail(it) {
     </div></div>
     <div class="step ${p ? "done" : ""} ${stepCls(2)}" id="step2"><div class="n">2</div><div class="body">
       <b>하이라이트 + 대본</b>
-      ${p ? `<span class="muted small">이 편(${it.part || 1}편): ${esc(p.engine)} 작성 · 예상 ${p.est_total}초</span>` : ""}
+      ${p ? `<span class="muted small">이 편(${it.part_label || "1편"}): ${esc(p.engine)} 작성 · 예상 ${p.est_total}초</span>` : ""}
       ${(it.parts || []).length ? `<span class="small">만들 편을 고르세요</span>
       <div class="eps" id="partpick">${it.parts.map(x => {
           const here = x.dir === it.name;
-          const tip = here ? "지금 보고 있는 편" : x.status ? "눌러서 이 편 열기" : x.fetch ? `${x.ep}화는 아직 안 받아서, 만들 때 공식 채널에서 받습니다` : "눌러서 만들 편으로 고르기";
+          const tip = (x.tip ? x.tip + " — " : "") + (here ? "지금 보고 있는 편" : x.status ? "눌러서 이 편 열기" : x.fetch ? `${x.ep}화는 아직 안 받아서, 만들 때 공식 채널에서 받습니다` : "눌러서 만들 편으로 고르기");
           return `<button class="ep ${x.status ? "made" : ""} ${here ? "here" : ""}" ${x.status ? `data-open-part="${esc(x.dir)}"` : `data-part="${x.n}"`}
-            title="${tip}">${x.status ? "✓ " : ""}${esc(x.label)}${x.status ? ` · ${x.status}` : ""}${x.fetch ? " ⤓" : ""}${here ? " · 보는 중" : ""}</button>`;
+            title="${tip}">${x.status ? "✓ " : ""}${esc(x.label)}${x.status ? ` · ${x.status}` : ""}${x.fetch ? " ⤓" : ""}${here ? EYE : ""}</button>`;
         }).join("")}</div>
       <div class="acts">
         <select id="llm"><option value="auto">자동 (번갈아)</option><option value="claude">Claude</option><option value="gpt">GPT</option></select>
         <button class="btn primary" id="btn-parts" ${busy ? "disabled" : ""}>선택한 편 대본 만들기</button>
-        ${p ? `<button class="btn" id="btn-plan" ${busy ? "disabled" : ""}>이 편(${it.part || 1}편) 다시 만들기</button>` : ""}
+        ${p ? `<button class="btn" id="btn-plan" ${busy ? "disabled" : ""}>이 편(${it.part_label || "1편"}) 다시 만들기</button>` : ""}
         <span class="muted small" id="part-count"></span>
       </div>
-      <span class="muted small">✓ 만든 편을 누르면 그 편 화면으로 이동합니다. 안 만든 편을 골라 ‘선택한 편 대본 만들기’를 누르세요 (여러 편은 순서대로 하나씩). ⤓ 표시는 회차를 받으면서 만듭니다.</span>` : `
+      <span class="muted small">✓ 만든 편을 누르면 그 편 화면으로 이동합니다. 안 만든 편을 골라 ‘선택한 편 대본 만들기’를 누르세요 (여러 편은 순서대로 하나씩). ⤓ 표시는 회차를 받으면서 만듭니다. 눈 아이콘은 지금 보고 있는 편입니다.</span>` : `
       <div class="acts">
         <select id="llm"><option value="auto">자동 (번갈아)</option><option value="claude">Claude</option><option value="gpt">GPT</option></select>
         <button class="btn ${p ? "" : "primary"}" id="btn-plan" ${busy || !it.inputs.length ? "disabled" : ""}>${p ? "다시 만들기" : "대본 만들기"}</button>
         ${p && it.has_input_dir ? `<button class="btn" id="btn-next" ${busy ? "disabled" : ""}>다음 편 만들기</button>` : ""}
       </div>
-      ${p ? `<span class="muted small">시리즈: ${it.part || 1}편 · ‘다음 편’은 다음 회차로 이어서 만들고, 회차가 없으면 공식 채널에서 받습니다.</span>` : ""}`}
+      ${p ? `<span class="muted small">시리즈: ${it.part_label || "1편"} · ‘다음 편’은 다음 회차로 이어서 만들고, 회차가 없으면 공식 채널에서 받습니다.</span>` : ""}`}
       </div></div>
     <div class="step ${it.video && !it.stale ? "done" : ""} ${stepCls(3)}" id="step3"><div class="n">3</div><div class="body">
-      <b>렌더 영상 만들기${it.part ? ` · ${it.part}편` : ""}</b>
-      ${it.part ? `<span class="muted small">지금 보고 있는 ${esc(it.drama)} ${it.part}편을 렌더합니다. 다른 편은 위에서 그 편을 눌러 연 뒤 렌더하세요.</span>` : ""}
+      <b>렌더 영상 만들기${it.part_label ? ` · ${it.part_label}` : ""}</b>
+      ${it.part_label ? `<span class="muted small">지금 보고 있는 ${esc(it.drama)} ${it.part_label}을 렌더합니다. 다른 편은 위에서 그 편을 눌러 연 뒤 렌더하세요.</span>` : ""}
       <div class="acts">
         <select id="tts-engine">${ENGINES.map(([k, n]) => `<option value="${k}" ${(cfg.engines || {})[k] === false ? "disabled" : ""}>${n}${(cfg.engines || {})[k] === false ? " (키 없음)" : ""}</option>`).join("")}
           <option value="auto">자동 (되는 엔진 순서대로)</option></select>
@@ -504,7 +508,7 @@ function renderDetail(it) {
   const info = it.info?.hook ? `<span class="muted small">${esc(it.info.platform || "")} · ${esc(it.info.hook)}</span>` : "";
 
   $("#detail").innerHTML = `
-    <div class="dhead"><h2>${esc(it.drama)}${it.part ? ` ${it.part}편` : ""}</h2>${chip(it.stage)}<span class="mono muted">${esc(it.name)}</span></div>
+    <div class="dhead"><h2>${esc(it.drama)}${it.part_label ? ` ${it.part_label}` : ""}</h2>${chip(it.stage)}<span class="mono muted">${esc(it.name)}</span></div>
     ${info}
     ${nextBar}
     ${it.status.claim ? `<div class="alert"><b>저작권 신고가 접수된 영상입니다 (${esc(it.status.claim)})</b><ul>
@@ -558,12 +562,13 @@ function renderDetail(it) {
   if ($("#btn-research")) $("#btn-research").onclick = e => { e.preventDefault(); job({cmd: "research", name: it.base || it.name}); };
   bindCovers(it);
   const pickedParts = new Set();
+  const partLabel = n => (it.parts.find(x => x.n === n) || {}).label || partName(n);
   document.querySelectorAll("[data-part]").forEach(b => b.onclick = () => {
     const n = +b.dataset.part;
     pickedParts.has(n) ? pickedParts.delete(n) : pickedParts.add(n);
     b.classList.toggle("on", pickedParts.has(n));
     const list = [...pickedParts].sort((x, y) => x - y);
-    $("#part-count").textContent = list.length ? `${list.join(", ")}편 · ${list.length}개 (편당 3~5분)` : "";
+    $("#part-count").textContent = list.length ? `${list.map(partLabel).join(", ")} · ${list.length}개 (편당 3~5분)` : "";
   });
   document.querySelectorAll("[data-open-part]").forEach(b => b.onclick = () => {
     if (b.dataset.openPart !== it.name) select(b.dataset.openPart);
@@ -571,7 +576,7 @@ function renderDetail(it) {
   if ($("#btn-parts")) $("#btn-parts").onclick = () => {
     const list = [...pickedParts].sort((x, y) => x - y);
     if (!list.length) return toast("만들 편을 먼저 고르세요");
-    const redo = it.parts.filter(x => list.includes(x.n) && x.status).map(x => `${x.n}편`);
+    const redo = it.parts.filter(x => list.includes(x.n) && x.status).map(x => x.label);
     if (redo.length && !confirm(`${redo.join(", ")}은 이미 있습니다. 새로 만들까요? (이전 대본은 plan_prev.json으로 보관)`)) return;
     job({cmd: "series_parts", name: it.base || it.name, parts: list, llm: $("#llm").value});
   };

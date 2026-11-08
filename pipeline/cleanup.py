@@ -35,15 +35,17 @@ def plan_cleanup():
             if not f:
                 continue
             nums = [(ep - 1) * n + k + 1 for k in range(n)]
+            if ep in ((done.get(series.INTRO) or {}).get("series") or {}).get("eps", []):
+                nums = [series.INTRO] + nums          # 예고편이 이 회차를 쓰면 예고편도 올려야 지운다
             dirs = [series.part_dir(d.name, num).name for num in nums]
             missing = [num for num in nums if num not in done]
             if missing:
-                out.append((f, False, f"{', '.join(map(str, missing))}편을 아직 안 만듦", dirs))
+                out.append((f, False, f"{', '.join(map(series.part_name, missing))}을 아직 안 만듦", dirs))
                 continue
             ups = [_uploaded_at(x) for x in dirs]
             if not all(ups):
                 not_up = [num for num, u in zip(nums, ups) if not u]
-                out.append((f, False, f"{', '.join(map(str, not_up))}편 아직 안 올림", dirs))
+                out.append((f, False, f"{', '.join(map(series.part_name, not_up))} 아직 안 올림", dirs))
                 continue
             last = max(ups)
             left = config.CLEAN_AFTER_DAYS - (dt.datetime.now() - last).total_seconds() / 86400
