@@ -1,6 +1,6 @@
 """올린 지 오래된 원본 회차를 지워 디스크를 비운다.
 
-규칙: 그 회차로 만드는 편(SERIES_SPLIT 개, 예: 전반·후반)이 모두 업로드(틱톡 또는 클립)됐고,
+규칙: 그 회차로 만드는 편(드라마마다 SERIES_SPLIT 개 이하, 예: 전반·후반)이 모두 업로드(틱톡 또는 클립)됐고,
 그중 마지막 업로드로부터 CLEAN_AFTER_DAYS 일이 지나면 → input 의 원본 회차 파일과 그 편들의 렌더 중간 파일을 지운다.
 완성 쇼츠(out), 대본(plan), 나레이션 음성(tts)은 남긴다. 다시 필요하면 '공식 채널에서 찾기'로 받으면 된다.
 """
@@ -26,10 +26,10 @@ def _uploaded_at(part_dir_name):
 
 def plan_cleanup():
     """[(회차 파일, 삭제 가능 여부, 이유, 관련 편 폴더들)]"""
-    n = max(1, config.SERIES_SPLIT)
     out = []
     for d in sorted(p for p in INPUT.iterdir() if p.is_dir()) if INPUT.exists() else []:
         done = dict(series.parts(d.name))
+        n = series.split_for(d.name)
         for ep in sorted({e for pl in done.values() for e in (pl.get("series") or {}).get("eps", [1])}):
             f = series._episode_file(d.name, ep)
             if not f:

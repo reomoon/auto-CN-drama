@@ -225,7 +225,7 @@ def _parts_list(base, have, official_eps):
     """받은 회차(+ 다음 회차 하나)로 만들 수 있는 편 목록과 상태."""
     from . import series as ser
     done = dict(ser.parts(base))
-    n = max(1, config.SERIES_SPLIT)
+    n = ser.split_for(base)
     eps = sorted(have)
     nxt = next((e for e in (official_eps or []) if e not in have and e > (max(eps) if eps else 0)), None)
     if nxt:
@@ -528,7 +528,7 @@ def api_covers(name):
     if not p or not lines:
         abort(404)
     from .render import pick_cover
-    cache = w / "covers" / "candidates.json"
+    cache = w / "covers" / "candidates_v2.json"     # v2: 놀란 표정 점수 포함
     cands = _read(cache)
     if not cands:
         picks = []
@@ -540,11 +540,12 @@ def api_covers(name):
                 continue
             picks.append(ln)
         cands = []
-        for ln in sorted(picks, key=lambda x: (x["src"], x["start"])):
+        for ln in picks:
             src = p["sources"][ln["src"]]
-            t = pick_cover(src, max(0.0, ln["start"] - 1.0), ln["end"] + 2.0, step=0.5)
-            cands.append({"src": ln["src"], "t": round(t, 1), "text": ln["text"][:30],
+            t, shock = pick_cover(src, max(0.0, ln["start"] - 1.0), ln["end"] + 4.0, step=0.5, detail=True)
+            cands.append({"src": ln["src"], "t": round(t, 1), "text": ln["text"][:30], "shock": shock,
                           "by_plan": bool(cover and ln["id"] == cover["id"])})
+        cands.sort(key=lambda c: -c["shock"])          # 놀란 표정이 큰 후보부터
         cache.parent.mkdir(parents=True, exist_ok=True)
         cache.write_text(json.dumps(cands, ensure_ascii=False), encoding="utf-8")
     rng = {}

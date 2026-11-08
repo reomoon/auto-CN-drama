@@ -132,7 +132,8 @@ copy .env.example .env   # ElevenLabs 키와 Voice ID 입력
 
 - `.env`의 `TEMPLATE=bold|classic`으로 고릅니다. 색과 확대 비율도 `.env`에서 바꿀 수 있습니다.
 - 나레이션이 시작되면 원음이 부드럽게 15%까지 줄었다가, 원본 장면 직전에 다시 커집니다 (`NARR_ORIG_VOLUME`, `DUCK_FADE`).
-- 글꼴 [Black Han Sans](fonts/OFL.txt)(SIL OFL)와 얼굴 검출 모델 YuNet(OpenCV Zoo, MIT)이 저장소에 들어 있습니다.
+- 글꼴 [Black Han Sans](fonts/OFL.txt)(SIL OFL)와 얼굴 검출 모델 YuNet(OpenCV Zoo, MIT), 표정 인식 모델 Progressive Teacher/MobileFaceNet(OpenCV Zoo, Apache 2.0)이 저장소에 들어 있습니다.
+- **썸네일(첫 1초 표지)은 놀란 표정을 우선**으로 고릅니다. 대본이 고른 장면과 가장 격한 장면 4개 앞뒤에서 놀람(+겁먹음) 점수가 가장 높은 얼굴 프레임을 쓰고, 대시보드 썸네일 후보도 놀란 순으로 😲 점수와 함께 보여줍니다. 가중치는 `.env`의 `COVER_SHOCK_WEIGHT`(기본 5, 0이면 표정 무시)로 바꿉니다. 대시보드에서 직접 고른 장면이 있으면 그걸 씁니다.
 
 ## 원본 영상 구하기
 

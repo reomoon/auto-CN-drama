@@ -65,9 +65,35 @@ def split_points(src, n):
     return cuts + [en]
 
 
-def episode_part(part):
-    """N편 → (회차, 회차 안의 몇 번째 조각 0부터)."""
+def split_for(base):
+    """이 드라마는 회차 하나를 몇 편으로 나눌지. 기본 SERIES_SPLIT 이지만, 회차가 짧아서
+    나눈 한 편으로는 원작 사용 상한(MAX_SOURCE_RATIO) 안에서 1분을 못 채우면 덜 나눈다 (20분짜리 회차 → 1회차 = 1편).
+    처음 정한 값은 info.json 에 적어 두고 계속 쓴다 (편 번호가 바뀌지 않게)."""
     n = max(1, config.SERIES_SPLIT)
+    p = INPUT / base / "info.json"
+    info = json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
+    if isinstance(info.get("split"), int) and info["split"] >= 1:
+        return info["split"]
+    ep = next((e for e in range(1, 200) if _episode_file(base, e)), None)
+    if ep is None or n == 1:
+        return n                                    # 아직 회차가 없으면 기본값 (저장하지 않음)
+    from . import media
+    st, en = media.story_range(_episode_file(base, ep))
+    need = config.TARGET_MIN_SEC / config.MAX_SOURCE_RATIO      # 한 편에 필요한 원본 길이
+    while n > 1 and (en - st) / n < need:
+        n -= 1
+    if n != config.SERIES_SPLIT:
+        print(f"  · 회차 본편이 {(en - st) / 60:.0f}분이라 회차 하나를 {n}편으로 나눕니다 "
+              f"(한 편에 원본 {need / 60:.0f}분 이상 필요)")
+    if p.exists():
+        info["split"] = n
+        p.write_text(json.dumps(info, ensure_ascii=False, indent=2), encoding="utf-8")
+    return n
+
+
+def episode_part(part, n=None):
+    """N편 → (회차, 회차 안의 몇 번째 조각 0부터)."""
+    n = max(1, n or config.SERIES_SPLIT)
     return (part - 1) // n + 1, (part - 1) % n
 
 
@@ -85,7 +111,7 @@ def make(base, part=None, engine="auto", tts_engine=None, eps=None):
             have = sorted(e for e in range(1, 200) if _episode_file(base, e))
             eps = have[:INTRO_MAX_EPS] or [1, 2]
     else:
-        ep, piece = episode_part(part)
+        ep, piece = episode_part(part, split_for(base))
         eps = eps or [ep]
 
     files = []
@@ -105,7 +131,7 @@ def make(base, part=None, engine="auto", tts_engine=None, eps=None):
             for p, pl in done if INTRO < p < part]      # 예고편은 이어받지 않는다
     drama = info.get("title_ko") or base
     windows, where = None, ""
-    n = max(1, config.SERIES_SPLIT)
+    n = split_for(base)
     if n > 1 and len(files) == 1 and part != INTRO:
         cuts = split_points(files[0], n)
         windows = {0: (cuts[piece], cuts[piece + 1])}

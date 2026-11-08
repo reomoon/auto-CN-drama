@@ -78,7 +78,7 @@ def layout(width, height):
         fg_h = min(1920 - BOLD_TOP, 1080 * z * height / width)
         bottom = BOLD_TOP + fg_h
         dlg = min(bottom - 28, 1540)              # 대사 자막: 영상 맨 아래 한 줄 고정
-        narr = dlg - 150                          # 해설 자막: 대사 자리보다 위
+        narr = dlg                                # 해설 자막: 대사 자막과 같은 자리 (둘은 동시에 안 나옴)
         return {"template": "bold", "zoom": z, "pad_y": BOLD_TOP, "max_h": 1920 - BOLD_TOP,
                 "title_y": (218 + config.BOLD_SHIFT, 362 + config.BOLD_SHIFT), "label_y": BOLD_TOP - 14,   # 제목 2줄, 〈작품명〉 ep 라벨
                 "dialog_v": int(1920 - dlg), "narr_align": 2, "narr_v": int(1920 - narr)}
@@ -213,13 +213,43 @@ def face_center(src, start, seg):
     return float(sum(x * a for x, a in pts) / sum(a for _, a in pts))
 
 
-def pick_cover(src, t0, t1, step=0.4):
-    """t0~t1 사이에서 썸네일로 쓸 순간을 고른다: 얼굴이 크고 초점이 선명한 프레임.
-    (틱톡·클립은 영상 첫 화면이 썸네일이 된다)"""
+FER_MODEL = config.ROOT / "models" / "facial_expression_recognition_mobilefacenet_2022july.onnx"
+FER_LABELS = ["angry", "disgust", "fearful", "happy", "neutral", "sad", "surprised"]
+_FER_STD = None
+_fer = None
+
+
+def face_shock(frame, face, scale=1.0):
+    """얼굴 하나가 놀란 표정인 정도 0~1 (놀람 + 겁먹음 절반). 표정 모델이 없으면 0.
+    face: YuNet 결과 한 줄(상자 4 + 눈·코·입꼬리 5점), scale: 검출한 작은 프레임 → frame 배율."""
+    global _fer, _FER_STD
+    if not FER_MODEL.exists():
+        return 0.0
+    import cv2
+    import numpy as np
+    if _fer is None:
+        _fer = cv2.dnn.readNet(str(FER_MODEL))
+        _FER_STD = np.array([[38.2946, 51.6963], [73.5318, 51.5014], [56.0252, 71.7366],
+                             [41.5493, 92.3655], [70.7299, 92.2041]], dtype=np.float32)
+    pts = (np.array(face[4:14], dtype=np.float32).reshape(5, 2) * scale)
+    m, _ = cv2.estimateAffinePartial2D(pts, _FER_STD)      # 눈·코·입 위치를 맞춰 112x112 로 정렬
+    if m is None:
+        return 0.0
+    img = cv2.cvtColor(cv2.warpAffine(frame, m, (112, 112)), cv2.COLOR_BGR2RGB).astype(np.float32) / 255.0
+    _fer.setInput(cv2.dnn.blobFromImage((img - 0.5) / 0.5), "data")
+    z = _fer.forward(["label"])[0][0].astype(np.float64)
+    pr = np.exp(z - z.max())
+    pr /= pr.sum()
+    return float(min(1.0, pr[FER_LABELS.index("surprised")] + 0.5 * pr[FER_LABELS.index("fearful")]))
+
+
+def pick_cover(src, t0, t1, step=0.4, detail=False):
+    """t0~t1 사이에서 썸네일로 쓸 순간을 고른다: 놀란 표정을 가장 우선하고, 그다음 얼굴이 크고 초점이 선명한 프레임.
+    (틱톡·클립은 영상 첫 화면이 썸네일이 된다)  detail=True 면 (시각, 놀람 정도)."""
     global _detector
     import cv2
     cap = cv2.VideoCapture(src)
-    best, best_t = -1.0, t0
+    best, best_t, best_shock = -1.0, t0, 0.0
     t = t0
     while t <= t1:
         cap.set(cv2.CAP_PROP_POS_MSEC, t * 1000)
@@ -230,7 +260,7 @@ def pick_cover(src, t0, t1, step=0.4):
         W, H = 640, max(1, int(h * 640 / w))
         small = cv2.resize(frame, (W, H))
         gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
-        box, area = None, 0.0
+        box, area, shock = None, 0.0, 0.0
         if FACE_MODEL.exists():
             if _detector is None:
                 _detector = cv2.FaceDetectorYN.create(str(FACE_MODEL), "", (W, H), 0.7)
@@ -240,14 +270,17 @@ def pick_cover(src, t0, t1, step=0.4):
                 f = max(faces, key=lambda r: r[2] * r[3])
                 x, y, fw, fh = (int(max(0, v)) for v in f[:4])
                 box, area = gray[y:y + fh, x:x + fw], fw * fh / (W * H)
+                # 화면에 크게 보이는 얼굴들 중 가장 놀란 얼굴 (원본 해상도에서 판정)
+                shock = max(face_shock(frame, r, w / W) for r in faces if r[2] * r[3] >= 0.4 * f[2] * f[3])
         region = box if box is not None and box.size > 400 else gray[H // 4: 3 * H // 4, W // 4: 3 * W // 4]
         sharp = float(cv2.Laplacian(region, cv2.CV_64F).var())
-        score = sharp * (1 + 6 * min(area, 0.25)) * (1.0 if box is not None else 0.4)
+        score = (sharp * (1 + 6 * min(area, 0.25)) * (1.0 if box is not None else 0.4)
+                 * (1 + config.COVER_SHOCK_WEIGHT * shock))
         if score > best:
-            best, best_t = score, t
+            best, best_t, best_shock = score, t, shock
         t += step
     cap.release()
-    return best_t
+    return (best_t, round(best_shock, 2)) if detail else best_t
 
 
 def _duck_expr(seg, ramp_in, ramp_out):
@@ -261,7 +294,8 @@ def _duck_expr(seg, ramp_in, ramp_out):
     return f"volume='{expr}':eval=frame"
 
 
-def render_segment(src, has_audio, start, seg, narr_mp3, out, lay, ramp_in=False, ramp_out=False, orig_vol=None):
+def render_segment(src, has_audio, start, seg, narr_mp3, out, lay, ramp_in=False, ramp_out=False, orig_vol=None,
+                   bars=None):
     z = lay["zoom"]
     args = ["-ss", f"{start:.3f}", "-t", f"{seg:.3f}", "-i", src]
     a_orig = "0:a"
@@ -275,7 +309,8 @@ def render_segment(src, has_audio, start, seg, narr_mp3, out, lay, ramp_in=False
         cx = face_center(src, start, seg)
         crop_x = str(int(min(ws - 1080, max(0, cx * ws - 540))))
     sharpen = ",unsharp=5:5:0.6:5:5:0.0" if ws > 1080 + 8 else ""
-    fg = (f"scale={ws}:-2:flags=lanczos,crop='min(iw,1080)':'min(ih,{lay['max_h']})':{crop_x}:'(ih-oh)/2'"
+    unbar = f"crop=iw:{bars[1]}:0:{bars[0]}," if bars else ""      # 원본의 위아래 검은 띠 잘라내기
+    fg = (f"{unbar}scale={ws}:-2:flags=lanczos,crop='min(iw,1080)':'min(ih,{lay['max_h']})':{crop_x}:'(ih-oh)/2'"
           f"{sharpen}")
     if config.BG_STYLE == "blur" and lay["template"] == "classic":
         fc = (f"[0:v]fps=30,split=2[v1][v2];"
@@ -311,7 +346,13 @@ def run(wdir, tts_engine=None, voice=None):
     by_id = {x["id"]: x for x in json.loads((wdir / "lines.json").read_text(encoding="utf-8"))}
     sources = plan["sources"]
     info = {s: media.probe(s) for s in sources}
-    first = info[sources[0]]
+    for s in sources:
+        info[s]["bars"] = media.letterbox(s)
+        if info[s]["bars"]:
+            print(f"  · 원본 위아래 검은 띠 {info[s]['bars'][0]}px 잘라냄 ({Path(s).name})")
+    first = dict(info[sources[0]])
+    if first["bars"]:
+        first["height"] = first["bars"][1]        # 띠를 뺀 실제 그림 비율로 배치
     lay = layout(first["width"], first["height"])
     rdir = wdir / "render"
     rdir.mkdir(exist_ok=True)
@@ -345,21 +386,38 @@ def run(wdir, tts_engine=None, voice=None):
                 cover_start = max(0.0, float(ct["t"]) - 0.05)
                 why = "직접 고른 장면"
             else:
+                # 후보 장면: 대본이 고른 썸네일 대사 + 대본에 쓴 장면 중 가장 격한 대사 4개
+                #  → 각 장면 앞뒤에서 놀란 표정이 가장 큰 프레임. 대본 추천 장면은 조금 더 쳐준다.
                 cv = by_id.get(plan.get("cover") or "")
-                why = "대본이 고른 장면" if cv else "가장 격한 장면 근처, 선명한 얼굴"
-                if not cv:   # 대본에 썸네일 장면이 없으면: 대본에 쓴 장면 중 가장 격한(음량 최고) 대사
-                    used = [by_id[f"L{n}"] for t in tl for n in range(int(t["from"][1:]), int(t["to"][1:]) + 1)
-                            if f"L{n}" in by_id]
-                    cv = max(used, key=lambda x: x.get("energy", 0)) if used else None
-                cover_src = sources[cv["src"]] if cv else src
-                csd = info[cover_src]["duration"]
-                t0, t1 = ((max(0.0, cv["start"] - 1.0), min(csd, cv["end"] + 3.0)) if cv
-                          else (start, min(csd, start + 12.0)))
-                s_st, s_en = media.story_range(cover_src)
-                t0, t1 = max(t0, s_st), min(t1, s_en - 1)
-                if t1 <= t0:
-                    t0, t1 = s_st, min(s_en - 1, s_st + 12.0)
-                cover_start = max(0.0, pick_cover(cover_src, t0, t1) - 0.05)
+                used = [by_id[f"L{n}"] for t in tl for n in range(int(t["from"][1:]), int(t["to"][1:]) + 1)
+                        if f"L{n}" in by_id]
+                cands = ([cv] if cv else []) + sorted(used, key=lambda x: -x.get("energy", 0))
+                picks = []
+                for ln in cands:
+                    if len(picks) >= 5:
+                        break
+                    if not any(q["src"] == ln["src"] and abs(q["start"] - ln["start"]) < 15 for q in picks):
+                        picks.append(ln)
+                found = []
+                for ln in picks:
+                    c_src = sources[ln["src"]]
+                    csd = info[c_src]["duration"]
+                    s_st, s_en = media.story_range(c_src)
+                    t0, t1 = max(ln["start"] - 1.0, s_st, 0.0), min(ln["end"] + 4.0, s_en - 1, csd)
+                    if t1 <= t0:
+                        continue
+                    ct_, shock = pick_cover(c_src, t0, t1, detail=True)
+                    bonus = 0.15 if cv and ln is cv else 0.0
+                    found.append((shock + bonus, shock, c_src, ct_, "대본이 고른 장면" if bonus else "격한 장면"))
+                if found:
+                    _, shock, cover_src, ct_, why = max(found, key=lambda x: x[0])
+                    why += f", 놀람 {shock:.0%}"
+                else:
+                    cover_src, (s_st, s_en) = src, media.story_range(src)
+                    t0 = max(start, s_st)
+                    ct_ = pick_cover(src, t0, min(s_en - 1, t0 + 12.0))
+                    why = "첫 장면 근처"
+                cover_start = max(0.0, ct_ - 0.05)
             print(f"  · 썸네일(표지): {int(cover_start // 60)}:{cover_start % 60:04.1f} ({why})")
         seg = nd + 0.5 if narr else clip
         # 오프닝 곡·엔딩 크레딧 위에 나레이션이 깔리지 않게 본편 안으로 옮긴다
@@ -399,7 +457,7 @@ def run(wdir, tts_engine=None, voice=None):
         out = rdir / "seg_00.mp4"
         print(f"  · 표지 {cover:.1f}초 (썸네일 장면 + 제목만, 그다음 대본 첫 장면에서 나레이션 시작)")
         render_segment(cover_src, info[cover_src]["has_audio"], cover_start, cover, None, str(out), lay,
-                       orig_vol=config.NARR_ORIG_VOLUME)
+                       orig_vol=config.NARR_ORIG_VOLUME, bars=info[cover_src]["bars"])
         segs.append(out.name)
         T = cover
     for i, x in enumerate(items, 1):
@@ -407,7 +465,8 @@ def run(wdir, tts_engine=None, voice=None):
         print(f"  · [{i}/{len(tl)}] 구간 편집 {seg:.1f}초")
         out = rdir / f"seg_{i:02d}.mp4"
         render_segment(src, info[src]["has_audio"], start, seg, str(mp3) if mp3 else None, str(out), lay,
-                       ramp_in=i > 1 and not is_narr[i - 2], ramp_out=i < len(tl) and not is_narr[i])
+                       ramp_in=i > 1 and not is_narr[i - 2], ramp_out=i < len(tl) and not is_narr[i],
+                       bars=info[src]["bars"])
         segs.append(out.name)
         marks.append([round(T, 2), round(seg, 2), x["idx"]])
 

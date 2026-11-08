@@ -22,6 +22,35 @@ def probe(path):
             "has_audio": any(s.get("codec_type") == "audio" for s in info.get("streams", []))}
 
 
+def letterbox(src):
+    """원본에 박혀 있는 위아래 검은 띠(레터박스)를 찾는다 → (그림 시작 y, 그림 높이), 없으면 None.
+    회차 20%·50%·80% 지점에서 ffmpeg cropdetect 로 재고, 위아래가 대칭인 띠만 인정한다. 결과는 캐시."""
+    src = Path(src)
+    cache = config.WORK / "_transcripts" / f"{src.stem}_{src.stat().st_size}.bars.json"
+    if cache.exists():
+        d = json.loads(cache.read_text(encoding="utf-8"))
+        return (d["y"], d["h"]) if d.get("h") else None
+    info = probe(src)
+    W, H, dur = info["width"], info["height"], info["duration"]
+    votes = {}
+    for k in (0.2, 0.5, 0.8):
+        r = subprocess.run(["ffmpeg", "-hide_banner", "-ss", f"{dur * k:.1f}", "-i", str(src), "-t", "6",
+                            "-vf", "cropdetect=24:2:0", "-an", "-f", "null", "-"],
+                           capture_output=True, text=True, encoding="utf-8", errors="replace")
+        for m in re.finditer(r"crop=(\d+):(\d+):(\d+):(\d+)", r.stderr):
+            w, h, _, y = map(int, m.groups())
+            votes[(w, h, y)] = votes.get((w, h, y), 0) + 1
+    res = None
+    if votes:
+        w, h, y = max(votes, key=votes.get)
+        bottom = H - h - y
+        if w >= W * 0.97 and y >= 8 and abs(y - bottom) <= 8 and h >= H * 0.5:
+            res = (y // 2 * 2, h // 2 * 2)
+    cache.parent.mkdir(parents=True, exist_ok=True)
+    cache.write_text(json.dumps({"y": res[0], "h": res[1]} if res else {"h": None}), encoding="utf-8")
+    return res
+
+
 def duration(path):
     return probe(path)["duration"]
 
@@ -111,7 +140,8 @@ def story_range(src):
     """(본편 시작, 본편 끝) 초. 회차 맨 끝(엔딩 크레딧) 화면과 색감이 같은 구간을 끝과 처음에서 찾아 뺀다.
     결과는 영상 옆에 캐시한다."""
     src = Path(src)
-    cache = config.WORK / "_transcripts" / f"{src.stem}_{src.stat().st_size}.range.json"
+    # range2: 화면 색으로 크레딧을 못 가리는 드라마(본편도 크레딧과 색감이 비슷함)는 대사로 판단
+    cache = config.WORK / "_transcripts" / f"{src.stem}_{src.stat().st_size}.range2.json"
     if cache.exists():
         d = json.loads(cache.read_text(encoding="utf-8"))
         return d["start"], d["end"]
@@ -135,6 +165,16 @@ def story_range(src):
         h = hist(t)
         return h is not None and ref is not None and cv2.compareHist(ref, h, cv2.HISTCMP_CORREL) > 0.6
 
+    # 회차 한가운데(25~75%) 화면도 크레딧과 비슷하게 나오면 색으로는 구분이 안 된다 → 대사로 판단
+    mid = [is_credit(dur * (0.25 + 0.5 * k / 19)) for k in range(20)] if ref is not None else []
+    if mid and sum(mid) / len(mid) >= 0.7:
+        cap.release()
+        start, end = _range_by_dialogue(src, dur)
+        print(f"    본편 구간(대사 기준, 화면 색으로는 크레딧 구분 불가): {start:.0f}~{end:.0f}초 / {dur:.0f}초")
+        cache.parent.mkdir(parents=True, exist_ok=True)
+        cache.write_text(json.dumps({"start": round(start, 1), "end": round(end, 1), "duration": round(dur, 1),
+                                     "by": "dialogue"}), encoding="utf-8")
+        return start, end
     end = dur
     if ref is not None and is_credit(dur - 25):          # 끝이 크레딧이면 크레딧 시작점을 찾는다 (최대 6분)
         t, miss = dur - 25, 0
@@ -160,6 +200,51 @@ def story_range(src):
     cache.write_text(json.dumps({"start": round(start, 1), "end": round(end, 1), "duration": round(dur, 1)}),
                      encoding="utf-8")
     return start, end
+
+
+SONG_CPS = 3.0     # 초당 글자 수가 이보다 느리면 노래 가사로 본다 (대사는 보통 4~6자)
+
+
+def _cps(x):
+    n = len(re.sub(r"[\s，。,.!?！？、…]", "", x.get("text") or ""))
+    return n / max(0.3, x["end"] - x["start"])
+
+
+def _song_run(lines):
+    """lines 맨 앞부터 이어지는 노래 가사(느린 줄) 개수. 중간에 빠른 줄 하나는 잘못 받아쓴 가사로 보고 넘어간다.
+    노래는 쉬지 않고 이어지므로, 20초 넘게 비면 거기서 노래가 끝난 것으로 본다."""
+    n = slip = 0
+    for i, x in enumerate(lines):
+        if i and max(x["start"] - lines[i - 1]["end"], lines[i - 1]["start"] - x["end"]) > 20:
+            break
+        if _cps(x) < SONG_CPS:
+            n, slip = i + 1, 0
+        elif slip or i + 1 >= len(lines) or _cps(lines[i + 1]) >= SONG_CPS:
+            break
+        else:
+            slip = 1
+    return n
+
+
+def _range_by_dialogue(src, dur):
+    """대사로 본편 구간 추정. 오프닝·엔딩 곡 가사는 대사보다 훨씬 느리게 받아써진다(초당 1~2.5자).
+    - 시작: 처음 4분 안, 앞쪽 노래 가사 줄들을 건너뛴 첫 대사
+    - 끝: 마지막 6분 안, 끝에서부터 이어지는 노래 가사 앞의 마지막 대사 + 5초 (가사가 시작되기 전까지만)"""
+    from .plan import transcript
+    lines = [x for x in transcript(src) if (x.get("text") or "").strip()]
+    if not lines:
+        return 0.0, dur
+    head = [x for x in lines if x["start"] < 240]
+    k = _song_run(head)
+    first = lines[k]["start"] if k < len(lines) else lines[0]["start"]
+    start = max(0.0, first - 0.5) if first < 240 else 0.0
+    tail = [x for x in lines if x["start"] > max(start, dur - 360)]
+    k = _song_run(tail[::-1])
+    if k >= len(tail):              # 마지막 6분이 전부 가사로 보이면 판단하지 않는다
+        return start, dur
+    last = tail[-k - 1]
+    song_at = tail[-k]["start"] if k else dur
+    return start, min(dur, last["end"] + 5.0, song_at)
 
 
 # ---------------- 음량 분석 ----------------
