@@ -152,6 +152,7 @@ main{max-width:1280px;margin:0 auto;padding:24px}
 @keyframes flash{0%,60%{box-shadow:0 0 0 3px var(--info)}100%{box-shadow:none}}
 .topts{display:flex;flex-direction:column;gap:6px;align-items:flex-start}
 .ep.made.on{background:var(--accent-strong);border-color:var(--accent-ink);color:var(--accent-ink);font-weight:700}
+.btn.more{width:100%;margin-top:6px;flex:none}
 .stephead{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .btn.small{padding:4px 11px;font-size:12px}
 .btn.danger{background:var(--danger);border-color:var(--danger);color:#fff}
@@ -388,14 +389,20 @@ $("#btn-new").onclick = async () => {
 };
 const EYE = `<svg class="eye" viewBox="0 0 24 24" width="15" height="15" aria-label="보는 중" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>`;
 const partName = n => (n === 0 ? "인트로" : `${n}편`);
+const LIST_MAX = 30;   // 왼쪽 목록·작업 로그 기본 표시 개수
 async function loadItems() { state.items = await api("/api/items"); renderItems(); }
 function renderItems() {
   const q = $("#q").value.trim();
-  const list = state.items.filter(x => !q || (x.drama + x.name).includes(q));
-  $("#items").innerHTML = list.map(x => `<div class="li ${x.name === state.sel ? "on" : ""}" data-n="${esc(x.name)}">
+  const all = state.items.filter(x => !q || (x.drama + x.name).includes(q));
+  let list = state.itemsAll ? all : all.slice(0, LIST_MAX);      // 기본 30개까지만
+  const cur = all.find(x => x.name === state.sel);
+  if (cur && !list.includes(cur)) list = [...list, cur];         // 보고 있는 작업은 항상 보이게
+  $("#items").innerHTML = (list.map(x => `<div class="li ${x.name === state.sel ? "on" : ""}" data-n="${esc(x.name)}">
       <div class="row"><span class="t">${esc(x.drama)}${x.part_label ? ` <span class="muted small">${x.part_label}</span>` : ""}</span>${x.busy ? `<span class="dot run"></span>` : chip(x.stage)}</div>
-      <span class="mono muted">${esc(x.name)}</span></div>`).join("") || `<div class="emptystate small">없음</div>`;
+      <span class="mono muted">${esc(x.name)}</span></div>`).join("") || `<div class="emptystate small">없음</div>`)
+    + (all.length > LIST_MAX ? `<button class="btn ghost more" id="items-more">${state.itemsAll ? `최근 ${LIST_MAX}개만 보기` : `전체 보기 (${all.length}개)`}</button>` : "");
   document.querySelectorAll(".li").forEach(el => el.onclick = () => select(el.dataset.n));
+  if ($("#items-more")) $("#items-more").onclick = () => { state.itemsAll = !state.itemsAll; renderItems(); };
 }
 
 /* ---------- 상세 ---------- */
@@ -888,16 +895,19 @@ let pollTimer, lastActive = 0;
 async function pollJobs(now) {
   clearTimeout(pollTimer);
   try {
-    const jobs = await api("/api/jobs");
+    const res = await api(`/api/jobs${state.jobsAll ? "?all=1" : ""}`);
+    const jobs = res.jobs || [];
     const active = jobs.filter(j => j.status === "running" || j.status === "queued");
     const run = jobs.find(j => j.status === "running");
     $("#jobdot").classList.toggle("run", !!active.length);
     const lastLine = j => (j.log || "").trim().split("\n").pop().trim();
     $("#jobtext").textContent = run ? `${run.label}${lastLine(run) ? " — " + lastLine(run) : ""}` : active.length ? `대기 ${active.length}` : jobs[0] ? `최근: ${jobs[0].label} ${jobs[0].status === "failed" ? "실패" : "완료"}` : "작업 없음";
     const dur = j => { const s = Math.round(((j.ended || Date.now() / 1000) - j.started)); return j.started ? ` · ${Math.floor(s / 60)}분 ${String(s % 60).padStart(2, "0")}초` : ""; };
-    $("#jobs").innerHTML = jobs.map(j => `<div class="job ${j.status}"><div class="jh"><span>${esc(j.label)}</span>
+    $("#jobs").innerHTML = (jobs.map(j => `<div class="job ${j.status}"><div class="jh"><span>${esc(j.label)}</span>
       <span class="st ${j.status}">${({queued: "대기", running: "진행 중", done: "완료", failed: "실패"})[j.status]}${dur(j)}</span></div>
-      <pre>${esc(j.log || "")}</pre></div>`).join("") || `<div class="emptystate small">아직 실행한 작업이 없습니다.</div>`;
+      <pre>${esc(j.log || "")}</pre></div>`).join("") || `<div class="emptystate small">아직 실행한 작업이 없습니다.</div>`)
+      + (res.total > LIST_MAX ? `<button class="btn ghost more" id="jobs-more">${state.jobsAll ? `최근 ${LIST_MAX}개만 보기` : `전체 이력 보기 (${res.total}개)`}</button>` : "");
+    if ($("#jobs-more")) $("#jobs-more").onclick = () => { state.jobsAll = !state.jobsAll; pollJobs(true); };
     document.querySelectorAll(".job pre").forEach(pre => pre.scrollTop = pre.scrollHeight);
     if (lastActive && active.length < lastActive) {   // 작업이 끝나면 화면 갱신
       const fin = jobs.find(j => j.status === "done" || j.status === "failed");

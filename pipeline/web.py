@@ -146,21 +146,43 @@ class Jobs:
                     f.write(f"\n실행 오류: {e}\n")
                     rc = 1
             job["status"], job["ended"] = ("done" if rc == 0 else "failed"), time.time()
+            _save_history(job)
 
     def busy_targets(self):
         return {j["target"] for j, _ in self.jobs if j["status"] in ("queued", "running") and j["target"]}
 
     def snapshot(self):
-        out = []
-        for j, _ in reversed(self.jobs):
-            log = Path(j["log"])
-            tail = log.read_text(encoding="utf-8", errors="replace")[-3000:] if log.exists() else ""
-            noise = ("UserWarning", "warnings.warn", "mmco", "unref short", "[ WARN:", "Fontconfig", "h264 @",
-                     "Targets are not supported")
-            tail = "\n".join(x for x in tail.splitlines() if not any(n in x for n in noise))
-            out.append({k: j[k] for k in ("id", "label", "target", "status", "created", "started", "ended")} |
-                       {"log": tail})
-        return out
+        return [{k: j[k] for k in JOB_KEYS} for j, _ in reversed(self.jobs)]
+
+
+JOB_KEYS = ("id", "label", "target", "status", "created", "started", "ended")
+HISTORY = LOGS / "history.jsonl"      # 끝난 작업 이력 (대시보드를 다시 켜도 남는다)
+_hist_lock = threading.Lock()
+
+
+def _save_history(job):
+    with _hist_lock, open(HISTORY, "a", encoding="utf-8") as f:
+        f.write(json.dumps({k: job[k] for k in JOB_KEYS}, ensure_ascii=False) + "\n")
+
+
+def _history():
+    if not HISTORY.exists():
+        return []
+    out = []
+    for line in HISTORY.read_text(encoding="utf-8", errors="replace").splitlines():
+        try:
+            out.append(json.loads(line))
+        except ValueError:
+            continue
+    return out
+
+
+def _log_tail(job_id):
+    log = LOGS / f"{job_id}.log"
+    tail = log.read_text(encoding="utf-8", errors="replace")[-3000:] if log.exists() else ""
+    noise = ("UserWarning", "warnings.warn", "mmco", "unref short", "[ WARN:", "Fontconfig", "h264 @",
+             "Targets are not supported")
+    return "\n".join(x for x in tail.splitlines() if not any(n in x for n in noise))
 
 
 JOBS = Jobs()      # 무거운 작업(GPU·렌더): 한 번에 하나
@@ -743,8 +765,14 @@ def api_job():
 
 @app.get("/api/jobs")
 def api_jobs():
-    jobs = sorted(JOBS.snapshot() + UPLOADS.snapshot(), key=lambda j: -j["created"])
-    return jsonify(jobs[:40])
+    """최근 작업(기본 30개) 또는 ?all=1 이면 저장된 이력 전체. 진행 중·대기 작업도 함께."""
+    live = JOBS.snapshot() + UPLOADS.snapshot()
+    seen = {j["id"] for j in live}
+    jobs = sorted(live + [h for h in _history() if h.get("id") not in seen], key=lambda j: -(j.get("created") or 0))
+    total = len(jobs)
+    if request.args.get("all") != "1":
+        jobs = jobs[:30]
+    return jsonify({"total": total, "jobs": [j | {"log": _log_tail(j["id"])} for j in jobs]})
 
 
 @app.get("/media/<name>")
