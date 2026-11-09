@@ -55,7 +55,7 @@ def run(wdir, to, private=False, dry_run=False):
 
     tmp = Path(tempfile.mkdtemp(prefix="cn_upload_"))
     req = {"platform": to, "video": str(video.resolve()), "text": upload_text(plan, to), "private": private,
-           "dry_run": dry_run, "ai_label": config.UPLOAD_AI_LABEL, "clip_account": config.CLIP_ACCOUNT,
+           "dry_run": dry_run, "tiktok_profile": config.TIKTOK_PROFILE_DIR, "ai_label": config.UPLOAD_AI_LABEL, "clip_account": config.CLIP_ACCOUNT,
            "clip_category": config.CLIP_CATEGORY, "result": str(tmp / "result.json")}
     (tmp / "req.json").write_text(json.dumps(req, ensure_ascii=False), encoding="utf-8")
 
@@ -84,6 +84,17 @@ def run(wdir, to, private=False, dry_run=False):
     if not dry_run:
         raise SystemExit(1)
     return False
+
+
+def tiktok_login():
+    """china-drama 전용 틱톡 프로필로 로그인 창을 연다. 로그인하고 창을 닫으면 저장된다."""
+    d, py = _auto_insta()
+    tmp = Path(tempfile.mkdtemp(prefix="cn_login_"))
+    req = {"platform": "tiktok", "login": True, "tiktok_profile": config.TIKTOK_PROFILE_DIR,
+           "result": str(tmp / "result.json")}
+    (tmp / "req.json").write_text(json.dumps(req, ensure_ascii=False), encoding="utf-8")
+    print(f"틱톡 로그인 창을 엽니다 (프로필: {config.TIKTOK_PROFILE_DIR}). 로그인한 뒤 창을 닫으세요.")
+    subprocess.run([str(py), str(BRIDGE), str(tmp / "req.json")], cwd=d)
 
 
 def _status(name):

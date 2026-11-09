@@ -90,7 +90,8 @@ CLEAN_AFTER_DAYS = float(env("CLEAN_AFTER_DAYS", "7"))  # 회차로 만든 편�
 
 # --- 업로드 (auto-insta 의 업로드 코드·로그인 계정을 그대로 사용) ---
 AUTO_INSTA_DIR = env("AUTO_INSTA_DIR", r"C:\python\auto-insta")
-CLIP_ACCOUNT = env("CLIP_ACCOUNT", "docu")             # 네이버 클립 계정: docu(다큐 클립 계정) | main
+TIKTOK_PROFILE_DIR = env("TIKTOK_PROFILE_DIR", str(Path.home() / ".china-drama" / "tiktok-chrome"))  # 틱톡 로그인 Chrome 프로필 (auto-insta 와 따로)
+CLIP_ACCOUNT = env("CLIP_ACCOUNT", "docu")            # 네이버 클립 계정: docu(다큐 클립 계정) | main
 CLIP_TAGS = env("CLIP_TAGS", "#오늘클립챌린지")         # 네이버 클립에 올릴 때만 붙이는 해시태그 (공백으로 여러 개)
 CLIP_CATEGORY = env("CLIP_CATEGORY", "이슈")           # 클립 카테고리 (클립 업로드 화면의 이름 그대로)
 UPLOAD_AI_LABEL = env("UPLOAD_AI_LABEL", "0") not in ("0", "false", "no")   # 틱톡·클립 'AI 생성' 표시 (기본: 켜지 않음)
@@ -104,7 +105,7 @@ REMOTE_PORT = int(env("REMOTE_PORT", "8701"))     # AWS nginx 가 프록시하�
 REMOTE_URL = env("REMOTE_URL", "https://auto-cn.hot-news.app")
 
 # --- 공정 이용 가이드라인 (법적 기준이 아닌 내부 안전 기준) ---
-NARR_RATIO_MIN = float(env("NARR_RATIO_MIN", "0.7"))      # 해설(나레이션) 비중 하한 → 원음 구간 30% 이하
-NARR_RATIO_MAX = float(env("NARR_RATIO_MAX", "0.8"))      # 해설 비중 상한 → 원음 구간 20% 이상
-MAX_SOURCE_RATIO = float(env("MAX_SOURCE_RATIO", "0.10"))  # 원작 사용량 상한 (쓴 원본 길이 ÷ 원본 회차 전체 길이)
+NARR_RATIO_MIN = float(env("NARR_RATIO_MIN", "0.6"))      # 해설(나레이션) 비중 하한 → 원음 구간 40% 이하
+NARR_RATIO_MAX = float(env("NARR_RATIO_MAX", "0.7"))      # 해설 비중 상한 → 원음 구간 30% 이상
+MAX_SOURCE_RATIO = float(env("MAX_SOURCE_RATIO", "0.13"))  # 원작 사용량 상한 (쓴 원본 길이 ÷ 원본 회차 전체 길이)
 MIN_ANALYSIS = int(env("MIN_ANALYSIS", "2"))               # 해석·비평·감상 나레이션 최소 개수

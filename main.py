@@ -14,7 +14,8 @@
 
   python main.py plan "드라마명" 영상1.mp4 [...] [--llm auto|claude|gpt] [--name 폴더명]
   python main.py render work\\폴더명 [--tts elevenlabs|edge]
-  python main.py upload work\\폴더명 --to tiktok|clip [--private] [--dry-run]   # auto-insta 계정으로 올리기
+  python main.py upload work\\폴더명 --to tiktok|clip [--private] [--dry-run]   # 틱톡은 전용 계정, 클립은 auto-insta 계정
+  python main.py tiktok-login                   # 틱톡 전용 계정 로그인 (처음 한 번)
   python main.py make "드라마명" 영상1.mp4 ...      # plan + render 한 번에
 """
 import argparse
@@ -86,6 +87,8 @@ def main():
     u.add_argument("--private", action="store_true", help="틱톡 '나만 보기'로 올리기")
     u.add_argument("--dry-run", action="store_true", help="틱톡: 게시 버튼 직전까지만")
 
+    sub.add_parser("tiktok-login", help="china-drama 전용 틱톡 계정 로그인 (auto-insta 와 따로)")
+
     rs = sub.add_parser("research", help="다른 사람들이 많이 본 장면 조사 (유튜브 조회수 + 웨이보·더우인 화제)")
     rs.add_argument("base", help="input 폴더 이름")
 
@@ -130,6 +133,9 @@ def main():
     elif a.cmd == "upload":
         from pipeline import upload
         upload.run(a.workdir, a.to, private=a.private, dry_run=a.dry_run)
+    elif a.cmd == "tiktok-login":
+        from pipeline import upload
+        upload.tiktok_login()
     elif a.cmd == "research":
         from pipeline import research
         print(research.prompt_text(research.get(a.base, force=True)))

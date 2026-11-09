@@ -13,11 +13,13 @@ from . import config
 
 def probe(path):
     r = subprocess.run(["ffprobe", "-v", "error", "-show_entries",
-                        "format=duration:stream=codec_type,width,height",
+                        "format=duration:stream=codec_type,width,height,avg_frame_rate",
                         "-of", "json", str(path)], capture_output=True, text=True, check=True)
     info = json.loads(r.stdout)
     v = next((s for s in info.get("streams", []) if s.get("codec_type") == "video"), {})
-    return {"duration": float(info["format"]["duration"]),
+    n, _, d = (v.get("avg_frame_rate") or "0/1").partition("/")
+    fps = float(n) / float(d or 1) if float(d or 1) else 0.0
+    return {"duration": float(info["format"]["duration"]), "fps": fps,
             "width": v.get("width") or 1920, "height": v.get("height") or 1080,
             "has_audio": any(s.get("codec_type") == "audio" for s in info.get("streams", []))}
 
@@ -48,6 +50,31 @@ def letterbox(src):
             res = (y // 2 * 2, h // 2 * 2)
     cache.parent.mkdir(parents=True, exist_ok=True)
     cache.write_text(json.dumps({"y": res[0], "h": res[1]} if res else {"h": None}), encoding="utf-8")
+    return res
+
+
+def pulldown(src):
+    """25fps 로 찍은 걸 30fps 로 올리면서 6장마다 앞 장을 한 번 더 넣은 원본인지 본다 (움직임이 1초에 5번 걸려 뚝뚝 끊겨 보임).
+    회차 25%·50%·75% 지점 8초씩, 앞 장과 똑같은 장(움직이는 장면 사이에 홀로 낀 것)이 6장 간격으로 반복되면 True. 결과는 캐시."""
+    src = Path(src)
+    cache = config.WORK / "_transcripts" / f"{src.stem}_{src.stat().st_size}.pulldown.json"
+    if cache.exists():
+        return json.loads(cache.read_text(encoding="utf-8"))["pulldown"]
+    info = probe(src)
+    res = False
+    if abs(info.get("fps", 0) - 30) < 0.1:
+        gaps = []
+        for k in (0.25, 0.5, 0.75):
+            r = subprocess.run(["ffmpeg", "-hide_banner", "-ss", f"{info['duration'] * k:.1f}", "-i", str(src),
+                                "-t", "8", "-an", "-vf", "scale=320:-2,tblend=all_mode=difference,signalstats,"
+                                "metadata=print:key=lavfi.signalstats.YAVG", "-f", "null", "-"],
+                               capture_output=True, text=True, encoding="utf-8", errors="replace")
+            v = [float(x) for x in re.findall(r"YAVG=([\d.]+)", r.stderr)]
+            dup = [i for i in range(1, len(v) - 1) if v[i] < 0.25 and v[i - 1] > 1.0 and v[i + 1] > 1.0]
+            gaps += [b - a for a, b in zip(dup, dup[1:])]
+        res = len(gaps) >= 12 and sum(g % 6 == 0 for g in gaps) >= 0.8 * len(gaps)
+    cache.parent.mkdir(parents=True, exist_ok=True)
+    cache.write_text(json.dumps({"pulldown": res}), encoding="utf-8")
     return res
 
 

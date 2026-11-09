@@ -26,8 +26,18 @@ def main():
         with sync_playwright() as p:
             if req["platform"] == "tiktok":
                 from tools import tiktok_upload as tt
+                if req.get("tiktok_profile"):   # china-drama 전용 계정 (auto-insta 프로필과 따로)
+                    tt.PROFILE_DIR = Path(req["tiktok_profile"])
                 context = tt.open_browser(p)
                 page = context.pages[0] if context.pages else context.new_page()
+                if req.get("login"):
+                    page.goto(tt.LOGIN_URL)
+                    print("열린 Chrome 창에서 틱톡에 로그인한 뒤, 창을 닫으세요.")
+                    page.wait_for_event("close", timeout=0)
+                    context.close()
+                    result.update(ok=True, posted=True)   # 로그인은 '게시'가 없으므로 끝나면 바로 닫기
+                    Path(req["result"]).write_text(json.dumps(result, ensure_ascii=False), encoding="utf-8")
+                    return
                 print("틱톡에 올립니다. 로봇 확인(퍼즐)이 뜨면 열린 창에서 직접 풀어 주세요.")
                 posted = tt.upload_one(page, Path(req["video"]), req["text"], private=req.get("private", False),
                                        dry_run=req.get("dry_run", False), ai_label=req.get("ai_label", True))

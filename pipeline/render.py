@@ -348,9 +348,19 @@ def _duck_expr(seg, ramp_in, ramp_out):
     return f"volume='{expr}':eval=frame"
 
 
+def out_fps(info):
+    """완성 영상 프레임 수: 원본이 찍힌 그대로(25fps 원본은 25). 30으로 억지로 올리면 5장마다 같은 장이 끼어 뚝뚝 끊긴다.
+    6장마다 같은 장을 끼워 30으로 올린 원본(media.pulldown)도 25로 본다. 원본마다 다르면 30."""
+    natives = {25 if x.get("pulldown") else round(x.get("fps") or 30) for x in info.values()}
+    f = natives.pop() if len(natives) == 1 else 30
+    return f if 20 <= f <= 30 else 30
+
+
 def render_segment(src, has_audio, start, seg, narr_mp3, out, lay, ramp_in=False, ramp_out=False, orig_vol=None,
-                   bars=None):
+                   bars=None, fps=30, pulldown=False):
     z = lay["zoom"]
+    # 25→30 으로 올리며 끼워 넣은 같은 장(6장마다 1장)을 빼서 원래 25장으로 되돌린다
+    vin = f"[0:v]{'decimate=cycle=6,' if pulldown and fps == 25 else ''}fps={fps}"
     args = ["-ss", f"{start:.3f}", "-t", f"{seg:.3f}", "-i", src]
     a_orig = "0:a"
     idx = 1
@@ -367,13 +377,13 @@ def render_segment(src, has_audio, start, seg, narr_mp3, out, lay, ramp_in=False
     fg = (f"{unbar}scale={ws}:-2:flags=lanczos,crop='min(iw,1080)':'min(ih,{lay['max_h']})':{crop_x}:'(ih-oh)/2'"
           f"{sharpen}")
     if config.BG_STYLE == "blur" and lay["template"] == "classic":
-        fc = (f"[0:v]fps=30,split=2[v1][v2];"
+        fc = (f"{vin},split=2[v1][v2];"
               f"[v1]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,gblur=sigma=40,"
               f"eq=brightness=-0.12[bg];[v2]{fg}[fg];"
               f"[bg][fg]overlay=(W-w)/2:(H-h)/2,setsar=1,format=yuv420p[v];")
     else:   # 검은 여백
         py = lay["pad_y"] if lay["pad_y"] is not None else "(oh-ih)/2"
-        fc = f"[0:v]fps=30,{fg},pad=1080:1920:(ow-iw)/2:{py}:black,setsar=1,format=yuv420p[v];"
+        fc = f"{vin},{fg},pad=1080:1920:(ow-iw)/2:{py}:black,setsar=1,format=yuv420p[v];"
     fc += f"[{a_orig}]aresample=48000,aformat=channel_layouts=stereo"
     if narr_mp3:
         fc += f",{_duck_expr(seg, ramp_in, ramp_out)}[oa]"
@@ -385,7 +395,7 @@ def render_segment(src, has_audio, start, seg, narr_mp3, out, lay, ramp_in=False
     else:
         fc += "[a]"
     media.ffmpeg([*args, "-filter_complex", fc, "-map", "[v]", "-map", "[a]", "-t", f"{seg:.3f}",
-                  "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-r", "30",
+                  "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-r", str(fps),
                   "-c:a", "aac", "-b:a", "192k", "-ar", "48000", out])
 
 
@@ -401,6 +411,9 @@ def run(wdir, tts_engine=None, voice=None):
     sources = plan["sources"]
     info = {s: media.probe(s) for s in sources}
     for s in sources:
+        info[s]["pulldown"] = media.pulldown(s)
+        if info[s]["pulldown"]:
+            print(f"  · 원본이 25fps 를 30fps 로 늘린 영상 → 끼워 넣은 프레임을 빼고 25fps 로 ({Path(s).name})")
         info[s]["bars"] = media.letterbox(s)
         if info[s]["bars"]:
             print(f"  · 원본 위아래 검은 띠 {info[s]['bars'][0]}px 잘라냄 ({Path(s).name})")
@@ -408,13 +421,15 @@ def run(wdir, tts_engine=None, voice=None):
     if first["bars"]:
         first["height"] = first["bars"][1]        # 띠를 뺀 실제 그림 비율로 배치
     lay = layout(first["width"], first["height"])
+    fps = out_fps(info)
+    seg_kw = lambda s: {"bars": info[s]["bars"], "fps": fps, "pulldown": info[s]["pulldown"]}
     rdir = wdir / "render"
     rdir.mkdir(exist_ok=True)
     for old in rdir.glob("seg_*.mp4"):
         old.unlink()
     if FONTS.is_dir():   # 굵은 제목체(Black Han Sans)를 자막 합성에 쓰도록 복사
         shutil.copytree(FONTS, rdir / "fonts", dirs_exist_ok=True)
-    print(f"  · 템플릿: {lay['template']}")
+    print(f"  · 템플릿: {lay['template']}, {fps}fps")
 
     # 1단계: 나레이션 음성을 먼저 만들어 항목별 실제 길이를 잰다
     tl = plan["timeline"]
@@ -511,7 +526,7 @@ def run(wdir, tts_engine=None, voice=None):
         out = rdir / "seg_00.mp4"
         print(f"  · 표지 {cover:.1f}초 (썸네일 장면 + 제목만, 그다음 대본 첫 장면에서 나레이션 시작)")
         render_segment(cover_src, info[cover_src]["has_audio"], cover_start, cover, None, str(out), lay,
-                       orig_vol=config.NARR_ORIG_VOLUME, bars=info[cover_src]["bars"])
+                       orig_vol=config.NARR_ORIG_VOLUME, **seg_kw(cover_src))
         segs.append(out.name)
         T = cover
     for i, x in enumerate(items, 1):
@@ -520,7 +535,7 @@ def run(wdir, tts_engine=None, voice=None):
         out = rdir / f"seg_{i:02d}.mp4"
         render_segment(src, info[src]["has_audio"], start, seg, str(mp3) if mp3 else None, str(out), lay,
                        ramp_in=i > 1 and not is_narr[i - 2], ramp_out=i < len(tl) and not is_narr[i],
-                       bars=info[src]["bars"])
+                       **seg_kw(src))
         segs.append(out.name)
         marks.append([round(T, 2), round(seg, 2), x["idx"]])
 
@@ -576,9 +591,11 @@ def run(wdir, tts_engine=None, voice=None):
     video = odir / f"{slug}.mp4"
     subs = "subtitles=subs.ass" + (":fontsdir=fonts" if (rdir / "fonts").is_dir() else "")
     vf = (f"setpts=PTS/{speed:.5f}," if speed != 1 else "") + subs
+    # 빠르게 돌릴 때 프레임 수를 그대로 두면 일정 간격으로 장이 빠져 끊긴다 → 배속만큼 초당 장 수를 올려 모든 장을 살린다
+    rate = f"{fps * speed:.3f}".rstrip("0").rstrip(".")
     af = (f"atempo={speed:.5f}," if speed != 1 else "") + "loudnorm=I=-14:TP=-1.5:LRA=11"
     media.ffmpeg(["-f", "concat", "-safe", "0", "-i", "list.txt", "-vf", vf, "-af", af,
-                  "-c:v", "libx264", "-preset", "medium", "-crf", "20", "-r", "30",
+                  "-c:v", "libx264", "-preset", "medium", "-crf", "20", "-r", rate,
                   "-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-movflags", "+faststart",
                   str(video.resolve())], cwd=rdir)
 

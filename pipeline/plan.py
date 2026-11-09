@@ -99,6 +99,9 @@ STORY_RULES = """### 이야기 구성 (가장 중요)
 4. 원본 항목 바로 앞의 나레이션은 그 장면을 이해하는 데 필요한 정보(누가 누구에게 왜)를 미리 알려준다.
    원본 장면이 나레이션 내용을 직접 보여주게 연결한다.
 5. 나레이션 항목의 화면(from)은 나레이션이 말하는 내용과 같은 장면에서 고른다.
+6. 원본 항목은 **짧고 센 장면 몰아보기**로 쓴다: 뺨·고성·오열·폭로·배신이 터지는 순간(⚡음량이 높은 대사)을 4~6개,
+   하나에 2~5초씩. 사이를 잇는 나레이션은 1~2문장으로 짧게 해서 원본 장면이 자주, 빠르게 나오게 한다.
+   예) 나레이션 "그런데 이 말을 들은 시어머니가" → (원본: 뺨 때리며 고함 3초) → 나레이션 "결국 참았던 게 터집니다" → (원본: 오열 4초)
 """
 
 INTRO_RULES = """### 예고편 구성 (가장 중요)
@@ -157,9 +160,9 @@ PROMPT = """너는 중국 막장 드라마 숏폼(틱톡·네이버 클립) 해�
 8. 나레이션 항목의 길이 = 나레이션 글자수(공백 제외) ÷ {cps} + 0.5초. 화면은 from 지점부터 그 길이만큼 재생된다.
 9. 전체 길이 {min_s:.0f}~{max_s:.0f}초. 원음이 그대로 나오는 원본 항목은 전체의 {orig_lo}~{orig_hi}%,
    나머지는 나레이션 항목(원음은 작게 깔림).
-   예) 나레이션 8개 × 평균 7초 = 56초 + 원본 3개 × 평균 6초 = 18초 → 74초 (원본 24%)
-   원본 항목은 가장 강렬한 대사 2~4개만 골라 짧게 쓴다.
-10. 원본 항목 하나는 2~10초. 대사가 완결되는 지점에서 끊는다(문장 중간에서 자르지 않기).
+   예) 나레이션 7개 × 평균 6초 = 42초 + 원본 6개 × 평균 4초 = 24초 → 66초 (원본 36%)
+   원본 항목은 가장 격한 대사 4~6개를 골라 짧게 쓴다.
+10. 원본 항목 하나는 2~6초. 대사가 완결되는 지점에서 끊는다(문장 중간에서 자르지 않기).
 11. from/to는 위 목록에 있는 대사ID만, 같은 소스(s번호) 안에서, from이 to보다 앞이어야 한다.
 
 {series}{hot}JSON만 출력하라:
@@ -226,7 +229,7 @@ def auto_fit(tl, by_id):
     tot, nar = stats()
     if bad(tot, nar):
         for it in tl:
-            if not _is_narr(it) and auto_trim(it, by_id, 7.0):
+            if not _is_narr(it) and auto_trim(it, by_id, 4.5):
                 notes.append(f"원본 클립 {it['from']}~{it['to']}로 축소")
         tot, nar = stats()
     orig_floor = (1 - config.NARR_RATIO_MAX) - 0.03          # 원본 구간을 이 아래(약 17%)로는 빼지 않는다
@@ -273,7 +276,7 @@ def make_validator(by_id, ordered=True):
                 continue
             it["src"] = a["src"]
             narr = (it.get("narration") or "").strip()
-            auto_trim(it, by_id, limit=20.0 if narr else 10.0)
+            auto_trim(it, by_id, limit=20.0 if narr else 6.0)
             sec, nsec = item_seconds(it, by_id)
             durs.append(f"{i}번 {sec:.1f}초{'(나레이션)' if narr else ''}")
             total += sec
@@ -310,7 +313,7 @@ def make_validator(by_id, ordered=True):
                             f"원본 항목을 줄이거나 나레이션 항목을 늘릴 것")
             if total and narr_total / total > config.NARR_RATIO_MAX + 0.05 and not _too_few_lines(by_id):
                 errs.append(f"원본 항목 비중 {1 - narr_total / total:.0%} → {1 - config.NARR_RATIO_MAX:.0%} 이상이 되게 "
-                            f"강렬한 원본 대사 장면을 2~4개 넣을 것")
+                            f"격한 원본 대사 장면(2~5초)을 4~6개가 되게 넣을 것")
             n_an = sum(1 for it in tl if (it.get("narration") or "").strip() and it.get("role") == "해석")
             if n_an < config.MIN_ANALYSIS:
                 errs.append(f"'해석' 나레이션이 {n_an}개 → {config.MIN_ANALYSIS}개 이상 필요 "
