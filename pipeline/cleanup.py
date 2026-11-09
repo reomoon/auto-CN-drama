@@ -29,12 +29,11 @@ def plan_cleanup():
     out = []
     for d in sorted(p for p in INPUT.iterdir() if p.is_dir()) if INPUT.exists() else []:
         done = dict(series.parts(d.name))
-        n = series.split_for(d.name)
         for ep in sorted({e for pl in done.values() for e in (pl.get("series") or {}).get("eps", [1])}):
             f = series._episode_file(d.name, ep)
             if not f:
                 continue
-            nums = [(ep - 1) * n + k + 1 for k in range(n)]
+            nums = [series.part_num(d.name, ep, k) for k in range(series.ep_split(d.name, ep))]
             if ep in ((done.get(series.INTRO) or {}).get("series") or {}).get("eps", []):
                 nums = [series.INTRO] + nums          # 예고편이 이 회차를 쓰면 예고편도 올려야 지운다
             dirs = [series.part_dir(d.name, num).name for num in nums]

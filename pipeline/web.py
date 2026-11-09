@@ -247,7 +247,6 @@ def _parts_list(base, have, official_eps):
     """받은 회차(+ 다음 회차 하나)로 만들 수 있는 편 목록과 상태."""
     from . import series as ser
     done = dict(ser.parts(base))
-    n = ser.split_for(base)
     eps = sorted(have)
     nxt = next((e for e in (official_eps or []) if e not in have and e > (max(eps) if eps else 0)), None)
     if nxt:
@@ -264,8 +263,9 @@ def _parts_list(base, have, official_eps):
                     "tip": f"인트로(예고편): 등장인물 소개 + 줄거리 예고 · {use[0]}~{use[-1]}화에서 재미있는 장면만",
                     "status": status, "dir": d, "fetch": False})
     for ep in eps:
+        n = ser.ep_split(base, ep)
         for k in range(n):
-            num = (ep - 1) * n + k + 1
+            num = ser.part_num(base, ep, k)
             d = ser.part_dir(base, num).name
             st = _read(config.OUT / d / "status.json", {})
             status = ("업로드됨" if (st.get("tiktok") or st.get("clip")) else

@@ -91,10 +91,34 @@ def split_for(base):
     return n
 
 
-def episode_part(part, n=None):
-    """N편 → (회차, 회차 안의 몇 번째 조각 0부터)."""
+def split_start(base):
+    """회차를 나누기 시작하는 회차 (info.json 의 split_start, 기본 1).
+    예) 3 이면 1편=1화, 2편=2화 (통째로), 3편=3화 전반, 4편=3화 후반 ... — 이미 회차 단위로 올린 편 번호를 지키려고."""
+    p = INPUT / base / "info.json"
+    info = json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
+    return max(1, int(info.get("split_start") or 1))
+
+
+def ep_split(base, ep):
+    """그 회차를 몇 편으로 나누는지."""
+    return 1 if ep < split_start(base) else split_for(base)
+
+
+def part_num(base, ep, k):
+    """(회차, 회차 안의 몇 번째 조각) → 편 번호."""
+    start = split_start(base)
+    if ep < start:
+        return ep
+    return (start - 1) + (ep - start) * split_for(base) + k + 1
+
+
+def episode_part(part, n=None, start=1):
+    """N편 → (회차, 회차 안의 몇 번째 조각 0부터). start 앞 회차는 1회차 = 1편."""
     n = max(1, n or config.SERIES_SPLIT)
-    return (part - 1) // n + 1, (part - 1) % n
+    if part < start:
+        return part, 0
+    q = part - (start - 1)
+    return start + (q - 1) // n, (q - 1) % n
 
 
 def make(base, part=None, engine="auto", tts_engine=None, eps=None):
@@ -111,7 +135,7 @@ def make(base, part=None, engine="auto", tts_engine=None, eps=None):
             have = sorted(e for e in range(1, 200) if _episode_file(base, e))
             eps = have[:INTRO_MAX_EPS] or [1, 2]
     else:
-        ep, piece = episode_part(part, split_for(base))
+        ep, piece = episode_part(part, split_for(base), split_start(base))
         eps = eps or [ep]
 
     files = []
@@ -131,7 +155,7 @@ def make(base, part=None, engine="auto", tts_engine=None, eps=None):
             for p, pl in done if INTRO < p < part]      # 예고편은 이어받지 않는다
     drama = info.get("title_ko") or base
     windows, where = None, ""
-    n = split_for(base)
+    n = ep_split(base, eps[0]) if part != INTRO else 1
     if n > 1 and len(files) == 1 and part != INTRO:
         cuts = split_points(files[0], n)
         windows = {0: (cuts[piece], cuts[piece + 1])}
