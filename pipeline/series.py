@@ -51,14 +51,21 @@ def _episode_file(base, ep):
 
 
 def split_points(src, n):
-    """회차 본편을 n편으로 나눌 경계. 등분 지점 ±8% 안에서 대사가 가장 길게 끊기는 곳(장면 전환)."""
+    """회차 본편을 n편으로 나눌 경계. 등분 지점 ±8% 안에서 대사가 가장 길게 끊기는 곳(장면 전환).
+    단, 나눈 한 편이 원작 사용 상한(MAX_SOURCE_RATIO) 안에서 1분을 채울 길이(need)는 되도록 경계 범위를 좁힌다."""
     from . import media
     st, en = media.story_range(src)
     lines = [x for x in plan.transcript(src) if st <= x["start"] and x["end"] <= en]
+    need = config.TARGET_MIN_SEC / config.MAX_SOURCE_RATIO + 1.0
     cuts = [st]
     for k in range(1, n):
         target = st + (en - st) * k / n
         lo, hi = target - (en - st) * 0.08, target + (en - st) * 0.08
+        # 앞 편이 need 이상, 남은 편들도 각각 need 이상이 되는 범위 (회차가 짧아 불가능하면 그대로)
+        f_lo, f_hi = cuts[-1] + need, en - need * (n - k)
+        if f_lo <= f_hi:
+            lo, hi = max(lo, f_lo), min(hi, f_hi)
+            target = min(max(target, f_lo), f_hi)
         gaps = [((b["start"] - a["end"]), (a["end"] + b["start"]) / 2)
                 for a, b in zip(lines, lines[1:]) if lo <= a["end"] and b["start"] <= hi]
         cuts.append(max(gaps)[1] if gaps else target)
