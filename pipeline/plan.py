@@ -226,13 +226,26 @@ def auto_fit(tl, by_id):
     def bad(tot, nar):
         return tot > config.TARGET_MAX_SEC or (tot and nar / tot < config.NARR_RATIO_MIN)
 
+    def too_little_orig(tot, nar):
+        return tot > 0 and (tot - nar) / tot < orig_floor
+
+    orig_floor = (1 - config.NARR_RATIO_MAX) - 0.03          # 원본 구간을 이 아래(약 27%)로는 줄이지 않는다
     tot, nar = stats()
-    if bad(tot, nar):
-        for it in tl:
-            if not _is_narr(it) and auto_trim(it, by_id, 4.5):
-                notes.append(f"원본 클립 {it['from']}~{it['to']}로 축소")
-        tot, nar = stats()
-    orig_floor = (1 - config.NARR_RATIO_MAX) - 0.03          # 원본 구간을 이 아래(약 17%)로는 빼지 않는다
+    # 긴 원본 클립부터 하나씩, 기준을 맞출 때까지만 줄인다 (한꺼번에 다 줄이면 원본이 너무 적어져 다시 요청하게 됨)
+    for it in sorted((x for x in tl if not _is_narr(x)), key=lambda x: -item_seconds(x, by_id)[0]):
+        if not bad(tot, nar):
+            break
+        keep = (it["from"], it["to"], dict(it.get("subs") or {}))
+        if not auto_trim(it, by_id, 4.5):
+            continue
+        t2, n2 = stats()
+        if too_little_orig(t2, n2):                         # 줄이면 원본이 기준 아래로 → 되돌린다
+            it["from"], it["to"] = keep[0], keep[1]
+            if it.get("subs") is not None:
+                it["subs"] = keep[2]
+            continue
+        notes.append(f"원본 클립 {it['from']}~{it['to']}로 축소")
+        tot, nar = t2, n2
     while bad(tot, nar):
         cands = [it for it in tl[1:-1] if not _is_narr(it)]
         if not cands:
@@ -241,7 +254,7 @@ def auto_fit(tl, by_id):
         sec = item_seconds(worst, by_id)[0]
         if tot - sec < config.TARGET_MIN_SEC:
             break
-        if tot - sec > 0 and (tot - sec - nar) / (tot - sec) < orig_floor:
+        if too_little_orig(tot - sec, nar):
             break                                             # 더 빼면 원본이 너무 적어짐 → 나레이션을 줄이게 한다
         tl.remove(worst)
         notes.append(f"원본 클립 {worst['from']}~{worst['to']} 제외")
@@ -276,7 +289,7 @@ def make_validator(by_id, ordered=True):
                 continue
             it["src"] = a["src"]
             narr = (it.get("narration") or "").strip()
-            auto_trim(it, by_id, limit=20.0 if narr else 6.0)
+            auto_trim(it, by_id, limit=20.0 if narr else 8.0)
             sec, nsec = item_seconds(it, by_id)
             durs.append(f"{i}번 {sec:.1f}초{'(나레이션)' if narr else ''}")
             total += sec
@@ -312,8 +325,9 @@ def make_validator(by_id, ordered=True):
                 errs.append(f"원본 항목 비중 {1 - narr_total / total:.0%} → {1 - config.NARR_RATIO_MIN:.0%} 이하가 되게 "
                             f"원본 항목을 줄이거나 나레이션 항목을 늘릴 것")
             if total and narr_total / total > config.NARR_RATIO_MAX + 0.05 and not _too_few_lines(by_id):
-                errs.append(f"원본 항목 비중 {1 - narr_total / total:.0%} → {1 - config.NARR_RATIO_MAX:.0%} 이상이 되게 "
-                            f"격한 원본 대사 장면(2~5초)을 4~6개가 되게 넣을 것")
+                # 원본이 적은 건 저작권 위험이 아니라 스타일 문제라 다시 요청하지 않고(한 번에 수 분) 알리기만 한다
+                print(f"  ! 원본 항목 비중 {1 - narr_total / total:.0%} (목표 {1 - config.NARR_RATIO_MAX:.0%} 이상) "
+                      f"— 그대로 진행합니다. 원본 장면을 늘리려면 대시보드에서 대본을 고치세요.")
             n_an = sum(1 for it in tl if (it.get("narration") or "").strip() and it.get("role") == "해석")
             if n_an < config.MIN_ANALYSIS:
                 errs.append(f"'해석' 나레이션이 {n_an}개 → {config.MIN_ANALYSIS}개 이상 필요 "

@@ -22,6 +22,7 @@ def env(key, default=None):
 # --- LLM (구독 CLI) ---
 CLAUDE_PATH = env("CLAUDE_PATH")          # 비우면 자동 탐색
 CLAUDE_MODEL = env("CLAUDE_MODEL")        # 예: sonnet / opus (비우면 기본값)
+CLAUDE_EFFORT = env("CLAUDE_EFFORT", "medium")   # low | medium | high (비우면 CLI 기본값 — 대본 한 번에 7분 넘게 걸릴 수 있음)
 CODEX_PATH = env("CODEX_PATH")            # 비우면 자동 탐색
 CODEX_MODEL = env("CODEX_MODEL", "gpt-6-luna")
 CODEX_EFFORT = env("CODEX_EFFORT", "medium")

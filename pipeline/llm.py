@@ -63,6 +63,8 @@ def _run_claude(prompt, web=False, timeout=900):
     cmd = [find_claude(), "-p", "--output-format", "text"]
     if config.CLAUDE_MODEL:
         cmd += ["--model", config.CLAUDE_MODEL]
+    if config.CLAUDE_EFFORT:
+        cmd += ["--effort", config.CLAUDE_EFFORT]
     if web:
         cmd += ["--allowedTools", "WebSearch", "WebFetch"]
     with tempfile.TemporaryDirectory() as d:
